@@ -7,7 +7,6 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use serde::{Serialize, Deserialize};
 use crate::ffi::value::{Type, Value};
-use crate::ffi::window::{executeInWorker, WindowResult};
 use crate::worker::executeFFI;
 // =================================================================================================
 
@@ -44,7 +43,7 @@ use crate::worker::executeFFI;
 
 // =================================================================================================
 
-/// Скрытый флаг запуска: если он первый аргумент — это не RTS, а процесс-Зигота.
+/// Скрытый флаг запуска: если он первый аргумент — это не runtime, а процесс-Зигота.
 pub const ZygoteFlag: &str = "__zygote";
 
 /// Запрос на выполнение FFI, уходящий в Зиготу целиком (она не знает про Token/StructureType).
@@ -97,12 +96,12 @@ pub(super) static ZygoteState: OnceLock<Mutex<ZygoteHandle>> = OnceLock::new();
 
 /// Точка входа дочернего процесса-Зиготы;
 /// main() обязан вызвать это первой строкой, если первый аргумент == ZygoteFlag;
-/// Процесс порождён через Command (fork+exec) — интерпретатор RTS не прогревался,
-/// AST не парсился, кучи метаданных нет. Библиотеку заранее НЕ грузит.
+/// Процесс порождён через Command (fork+exec) — runtime не прогревался,
+/// Лишних задач нет, кучи метаданных нет. Библиотеку заранее НЕ грузит.
 pub (super) fn runAsZygote() -> !
 {
   let socketPath: String = env::args().nth(2).expect("Zygote: missing socket path");
-  let socket: UnixStream = UnixStream::connect(&socketPath).expect("Zygote: cannot connect to RTS");
+  let socket: UnixStream = UnixStream::connect(&socketPath).expect("Zygote: cannot connect to runtime");
   zygoteLoop(socket);
 }
 
@@ -118,17 +117,17 @@ pub(super) fn initZygote() -> io::Result<()>
 }
 
 /// Зигота порождается ТОЛЬКО через Command (fork+exec) — и при старте, и при пересоздании.
-/// Это принципиально: обычный fork() пересоздания из уже прогретого многопоточного RTS
+/// Это принципиально: обычный fork() пересоздания из уже прогретого многопоточного runtime
 /// (супервизор — отдельный поток) унаследовал бы чужие мьютексы в захваченном состоянии —
 /// та самая дедлок-ловушка из твоего разбора. exec() полностью заменяет образ процесса,
 /// поэтому Зигота всегда рождается чистой, независимо от того, насколько "толстым"
-/// успел стать RTS к моменту respawn'а.
+/// успел стать runtime к моменту respawn'а.
 pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 {
   let uniqueId: u128 = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
   let socketPath: PathBuf = env::temp_dir()
-    .join(format!("rts-zygote-{}-{}.sock", std::process::id(), uniqueId)); // todo Какая-то фигня с .sock?
+    .join(format!("runtime-zygote-{}-{}.sock", std::process::id(), uniqueId)); // todo Какая-то фигня с .sock?
   let _ = std::fs::remove_file(&socketPath);
 
   let listener: UnixListener = UnixListener::bind(&socketPath)?;
@@ -149,20 +148,20 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 /// заранее. Зигота — пустой рантайм-шаблон; dlopen делает только форкнутый воркер.
 fn zygoteLoop(mut socket: UnixStream) -> !
 {
-  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // авто-reap воркеров, без зомби
+  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // Авто-reap воркеров, без зомби
 
   loop
   {
     let requestBytes: Vec<u8> = match readMessage(&mut socket)
     {
       Ok(bytes) => bytes,
-      Err(_) => std::process::exit(0), // сокет закрылся — RTS завершился, Зигота умирает вместе с ним
+      Err(_) => std::process::exit(0), // Сокет закрылся — runtime завершился, Зигота умирает вместе с ним
     };
 
     match unsafe { libc::fork() }
     {
       -1 =>
-      {
+      { // Ошибка: Форк зиготы не удался
         let _ = writeMessage(&mut socket, &encode(&FFIResponse::Err("Zygote fork failed".into())));
       }
       0 =>
@@ -181,15 +180,6 @@ fn handleRequest(requestBytes: &[u8]) -> FFIResponse
 {
   match decode::<FFIRequest>(requestBytes)
   {
-    Ok(request) if request.functionName == "__window__" => // todo Че за строка? Удалить?
-    {
-      let result: WindowResult = executeInWorker();
-      match result
-      {
-        WindowResult::Ok(val) => FFIResponse::Ok(val),
-        WindowResult::Err(e) => FFIResponse::Err(e),
-      }
-    }
     Ok(request) => match executeFFI(request)
     {
       Ok(value) => FFIResponse::Ok(value),
