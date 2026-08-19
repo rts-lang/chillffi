@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -95,6 +96,96 @@ pub(super) static ZygoteState: OnceLock<Mutex<ZygoteHandle>> = OnceLock::new();
 
 // =================================================================================================
 
+/// todo desc
+pub struct ClonedZygote 
+{
+  /// todo desc
+  pub pid: libc::pid_t,
+  /// todo desc
+  pub socket: UnixStream,
+}
+
+/// todo desc
+impl ClonedZygote 
+{
+  /// Запрашивает клон у Главной Зиготы и возвращает его RAII-хэндл
+  pub fn getMeClone() -> io::Result<Self> {
+    let mutex = ZygoteState.get().expect("Zygote not initialized");
+    let mut guard = mutex.lock().unwrap();
+
+    let uniqueId = std::time::SystemTime::now()
+      .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let cloneSockPath = env::temp_dir().join(format!("zygote-clone-{}.sock", uniqueId));
+
+    let listener = UnixListener::bind(&cloneSockPath)?;
+
+    // 1. Передаем Главной Зиготе путь сокета, куда должен подключиться её клон
+    writeMessage(&mut guard.socket, cloneSockPath.to_str().unwrap().as_bytes())?;
+
+    // 2. Получаем PID форкнутого клона
+    let pidBytes = readMessage(&mut guard.socket)?;
+    let pid = i32::from_le_bytes(pidBytes.try_into().unwrap());
+
+    // 3. Принимаем подключение от клона
+    let (socket, _) = listener.accept()?;
+    let _ = std::fs::remove_file(&cloneSockPath);
+
+    Ok(ClonedZygote { pid, socket })
+  }
+
+  /// Вызов FFI внутри конкретного клона
+  pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String> {
+    let bytes = encode(&request);
+    let responseBytes = sendAndReceive(&mut self.socket, &bytes).map_err(|e| e.to_string())?;
+    decode(&responseBytes).map_err(|e| e.to_string())
+  }
+}
+
+// При drop() клон моментально убивается, Главная Зигота не затрагивается
+impl Drop for ClonedZygote {
+  fn drop(&mut self) {
+    unsafe {
+      libc::kill(self.pid, libc::SIGKILL);
+      libc::waitpid(self.pid, std::ptr::null_mut(), libc::WNOHANG);
+    }
+  }
+}
+
+// =================================================================================================
+
+thread_local!{
+  /// Стек зигот: каждый вход в ffi!{} кладет новую зиготу наверх стека
+  pub(crate) static ZygoteStack: RefCell<Vec<ClonedZygote>> = const { RefCell::new(Vec::new()) };
+}
+
+/// todo desc
+pub struct ZygoteGuard;
+
+impl ZygoteGuard 
+{
+  /// todo desc
+  pub fn enter(zygote: ClonedZygote) -> Self {
+    ZygoteStack.with(|stack| {
+      stack.borrow_mut().push(zygote);
+    });
+    ZygoteGuard
+  }
+}
+
+impl Drop for ZygoteGuard 
+{
+  /// Снимаем со стека именно эту зиготу,
+  /// и Rust автоматически вызывает её drop(), убивая процесс.
+  fn drop(&mut self) 
+  {
+    ZygoteStack.with(|stack| {
+      stack.borrow_mut().pop();
+    });
+  }
+}
+
+// =================================================================================================
+
 /// Точка входа дочернего процесса-Зиготы;
 /// main() обязан вызвать это первой строкой, если первый аргумент == ZygoteFlag;
 /// Процесс порождён через Command (fork+exec) — runtime не прогревался,
@@ -144,34 +235,59 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
   Ok(ZygoteHandle{ process, socket, socketPath })
 }
 
-/// Тело Зиготы: бесконечный цикл ожидания команд.
+/// Цикл главной зиготы: бесконечный цикл ожидания команд.
 /// Библиотеку заранее НЕ грузит — язык интерпретируемый, какой FFI понадобится, неизвестно
 /// заранее. Зигота — пустой рантайм-шаблон; dlopen делает только форкнутый зигота.
 fn zygoteLoop(mut socket: UnixStream) -> !
 {
   unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // Авто-reap зигот, без зомби
 
-  loop
-  {
-    let requestBytes: Vec<u8> = match readMessage(&mut socket)
+  loop {
+    // Получаем путь к сокету для нового клона
+    let msg: Vec<u8> = match readMessage(&mut socket) 
     {
       Ok(bytes) => bytes,
-      Err(_) => std::process::exit(0), // Сокет закрылся — runtime завершился, Зигота умирает вместе с ним
+      Err(_) => std::process::exit(0), // Parent умер
     };
 
-    match unsafe { libc::fork() }
+    let cloneSockPath: String = String::from_utf8_lossy(&msg).to_string();
+
+    match unsafe { libc::fork() } 
     {
-      -1 =>
-      { // Ошибка: Форк зиготы не удался
-        let _ = writeMessage(&mut socket, &encode(&FFIResponse::Err("Zygote fork failed".into())));
+      -1 => {
+        let _ = writeMessage(&mut socket, &0i32.to_le_bytes());
       }
-      0 =>
-      { // Клон-зигота: разовый, форкнут от пустой Зиготы — почти нулевой page-fault
-        let response: FFIResponse = handleRequest(&requestBytes);
-        let _ = writeMessage(&mut socket, &encode(&response));
+      0 => {
+        // --- КЛОНЗИГОТА ---
+        if let Ok(cloneSocket) = UnixStream::connect(&cloneSockPath) {
+          cloneLoop(cloneSocket);
+        }
         std::process::exit(0);
       }
-      _ => {} // Основная зигота: клона-зиготу не ждёт, сразу слушает следующий запрос
+      pid => {
+        // --- ГЛАВНАЯ ЗИГОТА ---
+        // Возвращает PID клона рантайму и сразу ждёт следующий сигнал на клон
+        let _ = writeMessage(&mut socket, &pid.to_le_bytes());
+      }
+    }
+    //
+  }
+}
+
+/// Персональный цикл клона
+fn cloneLoop(mut socket: UnixStream) -> ! 
+{
+  loop 
+  {
+    let requestBytes: Vec<u8> = match readMessage(&mut socket) 
+    {
+      Ok(bytes) => bytes,
+      Err(_) => std::process::exit(0), // Переменную drop'нули — сокет закрылся, клон ушел
+    };
+
+    let response: FFIResponse = handleRequest(&requestBytes);
+    if writeMessage(&mut socket, &encode(&response)).is_err() {
+      std::process::exit(0);
     }
   }
 }

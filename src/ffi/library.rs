@@ -2,8 +2,8 @@ use crate::ffi::value::{Type, Value};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
-use crate::zygote::{call, FFIRequest, FFIResponse};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
 /// todo desc
@@ -94,30 +94,32 @@ fn callById(
   functionName: &str,
   args: Vec<Value>,
   resultType: Type,
-) -> Result<Value, FFIError>
+) -> Result<Value, FFIError> 
 {
-  // Получаем путь из реестра
-  let registry = getRegistry().lock().unwrap();
-  let libraryPath = registry.get(&libraryId)
+  let registry: MutexGuard<HashMap<u64, String>> = getRegistry().lock().unwrap();
+  let libraryPath: String = registry.get(&libraryId)
     .ok_or(FFIError::LibraryNotFound)?
     .clone();
   drop(registry);
 
-  // Формируем запрос через существующий протокол
-  let request = FFIRequest {
+  let request: FFIRequest = FFIRequest {
     libraryPath,
     functionName: functionName.to_string(),
     args,
     resultType,
   };
 
-  // Отправляем в зиготу
-  match call(request)
-  {
-    Ok(FFIResponse::Ok(value)) => Ok(value),
-    Ok(FFIResponse::Err(e)) => Err(FFIError::CallFailed(e)),
-    Err(e) => Err(FFIError::ZygoteCommunicationFailed(e)),
-  }
+  // Выбираем клон Зиготы, созданный в текущем блоке ffi!{}
+  ZygoteStack.with(|stack| {
+    let mut mut_stack = stack.borrow_mut();
+    let zygote = mut_stack.last_mut().ok_or(FFIError::ZygoteNotInitialized)?;
+
+    match zygote.call(request) {
+      Ok(FFIResponse::Ok(value)) => Ok(value),
+      Ok(FFIResponse::Err(e)) => Err(FFIError::CallFailed(e)),
+      Err(e) => Err(FFIError::ZygoteCommunicationFailed(e)),
+    }
+  })
 }
 
 // =================================================================================================

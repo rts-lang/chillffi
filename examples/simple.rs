@@ -7,7 +7,7 @@ fn main() -> ()
 {
   // Если запущен как зигота, переключаемся в режим обработки запросов
   setupZygote().expect("Failed to setup zygote");
-
+  
   // Тест 1: Вызов sqrt(4.0) из libm.so
   let result: Value = ffi!{
     let libm: Library = Library::load("libm.so.6").map_err(|e| e.to_string())?;
