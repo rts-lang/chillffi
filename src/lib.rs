@@ -21,7 +21,7 @@ fn zygoteEntrypoint()
   }
 }
 
-// todo desc
+/// todo desc
 pub fn setupZygote() -> io::Result<()>
 {
   initZygote()
@@ -29,4 +29,18 @@ pub fn setupZygote() -> io::Result<()>
 
 // =================================================================================================
 
-// todo Тут должен прокид наружу lib
+/// todo desc
+/// 
+/// Важно: Он заберет на себя Library - поэтому коду внутри, придется указывать
+/// это иначе при совпадении этого типа данных. todo В целом, это можно исправить в будущем.
+#[macro_export]
+macro_rules! ffi {
+  ($($body:tt)*) => {
+    (|| -> Result<_, $crate::ffi::library::FFIError> {
+      use $crate::ffi::library::__FFILibrary as Library;
+      $($body)*
+    })()
+  };
+}
+
+// =================================================================================================

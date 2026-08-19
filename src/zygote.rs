@@ -7,6 +7,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use serde::{Serialize, Deserialize};
 use crate::ffi::value::{Type, Value};
+use crate::ffi::window::{executeInWorker, WindowResult};
 use crate::worker::executeFFI;
 // =================================================================================================
 
@@ -69,12 +70,12 @@ pub enum FFIResponse
 }
 
 /// todo desc
-struct ZygoteHandle
+pub(super) struct ZygoteHandle
 {
   /// todo desc
   process: Child,
   /// todo desc
-  socket: UnixStream,
+  pub(super) socket: UnixStream,
   /// todo desc
   socketPath: PathBuf
 }
@@ -90,7 +91,7 @@ impl Drop for ZygoteHandle
 }
 
 /// todo desc
-static ZygoteState: OnceLock<Mutex<ZygoteHandle>> = OnceLock::new();
+pub(super) static ZygoteState: OnceLock<Mutex<ZygoteHandle>> = OnceLock::new();
 
 // =================================================================================================
 
@@ -122,12 +123,12 @@ pub(super) fn initZygote() -> io::Result<()>
 /// та самая дедлок-ловушка из твоего разбора. exec() полностью заменяет образ процесса,
 /// поэтому Зигота всегда рождается чистой, независимо от того, насколько "толстым"
 /// успел стать RTS к моменту respawn'а.
-fn spawnZygote() -> io::Result<ZygoteHandle>
+pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 {
   let uniqueId: u128 = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
   let socketPath: PathBuf = env::temp_dir()
-    .join(format!("rts-zygote-{}-{}.sock", std::process::id(), uniqueId));
+    .join(format!("rts-zygote-{}-{}.sock", std::process::id(), uniqueId)); // todo Какая-то фигня с .sock?
   let _ = std::fs::remove_file(&socketPath);
 
   let listener: UnixListener = UnixListener::bind(&socketPath)?;
@@ -180,6 +181,15 @@ fn handleRequest(requestBytes: &[u8]) -> FFIResponse
 {
   match decode::<FFIRequest>(requestBytes)
   {
+    Ok(request) if request.functionName == "__window__" => // todo Че за строка? Удалить?
+    {
+      let result: WindowResult = executeInWorker();
+      match result
+      {
+        WindowResult::Ok(val) => FFIResponse::Ok(val),
+        WindowResult::Err(e) => FFIResponse::Err(e),
+      }
+    }
     Ok(request) => match executeFFI(request)
     {
       Ok(value) => FFIResponse::Ok(value),
@@ -212,7 +222,7 @@ pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
 }
 
 /// todo desc
-fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Result<Vec<u8>>
+pub(super) fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Result<Vec<u8>>
 {
   writeMessage(socket, bytes)?;
   readMessage(socket)
@@ -264,13 +274,13 @@ fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
 }
 
 /// todo desc
-fn encode<T: Serialize>(value: &T) -> Vec<u8> 
+pub(super) fn encode<T: Serialize>(value: &T) -> Vec<u8> 
 {
   let config = bincode::config::standard();
   bincode::serde::encode_to_vec(value, config).expect("encode failed")
 }
 /// todo desc
-fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 
+pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 
 {
   let config = bincode::config::standard();
   bincode::serde::decode_from_slice(bytes, config).map(|(decoded, _bytes_read)| decoded)

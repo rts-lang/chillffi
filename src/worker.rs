@@ -7,6 +7,17 @@ use crate::zygote;
 use crate::zygote::{FFIRequest, FFIResponse};
 // =================================================================================================
 
+use std::cell::Cell;
+
+thread_local! {
+  static InsideWindow: Cell<bool> = Cell::new(false);
+}
+
+pub fn isInsideWindow() -> bool { InsideWindow.with(|c| c.get()) }
+pub fn setInsideWindow(value: bool) { InsideWindow.with(|c| c.set(value)) }
+
+// =================================================================================================
+
 /// Формирует запрос и отправляет его Зиготе;
 /// сама эта функция ничего не форкает и не грузит — только сериализация и IPC;
 ///
