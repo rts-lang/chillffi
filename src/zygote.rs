@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Child};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
+use bincode::config::Configuration;
 use serde::{Serialize, Deserialize};
 use crate::ffi::value::{Type, Value};
 use crate::worker::executeFFI;
@@ -145,10 +146,10 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 
 /// Тело Зиготы: бесконечный цикл ожидания команд.
 /// Библиотеку заранее НЕ грузит — язык интерпретируемый, какой FFI понадобится, неизвестно
-/// заранее. Зигота — пустой рантайм-шаблон; dlopen делает только форкнутый воркер.
+/// заранее. Зигота — пустой рантайм-шаблон; dlopen делает только форкнутый зигота.
 fn zygoteLoop(mut socket: UnixStream) -> !
 {
-  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // Авто-reap воркеров, без зомби
+  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // Авто-reap зигот, без зомби
 
   loop
   {
@@ -165,12 +166,12 @@ fn zygoteLoop(mut socket: UnixStream) -> !
         let _ = writeMessage(&mut socket, &encode(&FFIResponse::Err("Zygote fork failed".into())));
       }
       0 =>
-      { // Воркер: разовый, форкнут от пустой Зиготы — почти нулевой page-fault
+      { // Клон-зигота: разовый, форкнут от пустой Зиготы — почти нулевой page-fault
         let response: FFIResponse = handleRequest(&requestBytes);
         let _ = writeMessage(&mut socket, &encode(&response));
         std::process::exit(0);
       }
-      _ => {} // Зигота: воркера не ждёт, сразу слушает следующий запрос
+      _ => {} // Основная зигота: клона-зиготу не ждёт, сразу слушает следующий запрос
     }
   }
 }
@@ -231,7 +232,7 @@ fn supervisorLoop()
     unsafe { libc::waitpid(pidToWait as libc::pid_t, std::ptr::null_mut(), 0); }
 
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
-    let mut guard = mutex.lock().unwrap();
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
     if guard.process.id() == pidToWait // ещё не пересоздана параллельно через call()
     {
       match spawnZygote()
@@ -256,9 +257,9 @@ fn writeMessage(socket: &mut UnixStream, data: &[u8]) -> io::Result<()>
 /// todo desc
 fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
 {
-  let mut lenBuf: [u8; 4] = [0u8; 4];
-  socket.read_exact(&mut lenBuf)?;
-  let mut buffer: Vec<u8> = vec![0u8; u32::from_le_bytes(lenBuf) as usize];
+  let mut lengthBuffer: [u8; 4] = [0u8; 4];
+  socket.read_exact(&mut lengthBuffer)?;
+  let mut buffer: Vec<u8> = vec![0u8; u32::from_le_bytes(lengthBuffer) as usize];
   socket.read_exact(&mut buffer)?;
   Ok(buffer)
 }
@@ -266,13 +267,13 @@ fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
 /// todo desc
 pub(super) fn encode<T: Serialize>(value: &T) -> Vec<u8> 
 {
-  let config = bincode::config::standard();
+  let config: Configuration = bincode::config::standard();
   bincode::serde::encode_to_vec(value, config).expect("encode failed")
 }
 /// todo desc
 pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 
 {
-  let config = bincode::config::standard();
+  let config: Configuration = bincode::config::standard();
   bincode::serde::decode_from_slice(bytes, config).map(|(decoded, _bytes_read)| decoded)
 }
 
