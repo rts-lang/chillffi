@@ -1,8 +1,8 @@
+use fxhash::FxHashMap;
 use std::sync::MutexGuard;
 use crate::zygote::ClonedZygote;
 use crate::zygote::ZygoteState;
 use crate::ffi::value::{Type, Value};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
@@ -18,11 +18,11 @@ pub enum FFIError
   NoActiveZygoteScope,
   ZygoteCommunicationFailed(String),
   LibraryLoadFailed(String),
-  LibraryNotFound,
+  LibraryNotFound{ libraryPath: String },
   SymbolNotFound,
   BadArgument,
   BadResultType,
-  CallFailed(String),
+  CallFailed{ functionName: String, message: String },
   UnsupportedPointerReturn,
   EncodeFailed,
   DecodeFailed,
@@ -49,7 +49,7 @@ impl<E: std::error::Error + 'static> From<E> for FFIError
 /// Counter for assigning unique identifiers to libraries
 static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
 /// Global registry of loaded libraries by their identifiers
-static RegisteredLibraries: OnceLock<Mutex<HashMap<usize, String>>> = OnceLock::new();
+static RegisteredLibraries: OnceLock<Mutex<FxHashMap<usize, String>>> = OnceLock::new();
 
 /// Returns the next unique library identifier
 fn nextLibraryId() -> usize
@@ -58,49 +58,33 @@ fn nextLibraryId() -> usize
 }
 
 /// Returns the global registry of registered libraries
-fn getRegistry() -> &'static Mutex<HashMap<usize, String>>
+fn getRegistry() -> &'static Mutex<FxHashMap<usize, String>>
 {
-  RegisteredLibraries.get_or_init(|| Mutex::new(HashMap::new()))
+  RegisteredLibraries.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
 /// Adds a library to the registry by its identifier
 fn registerLibrary(id: usize, path: &str) -> ()
 {
-  let mut registry = getRegistry().lock().unwrap();
+  let mut registry: MutexGuard<FxHashMap<usize, String>> = getRegistry().lock().unwrap();
   registry.insert(id, path.to_string());
 }
 
 /// Removes a library from the registry by its identifier
 fn unregisterLibrary(id: usize) -> ()
 {
-  let mut registry = getRegistry().lock().unwrap();
+  let mut registry: MutexGuard<FxHashMap<usize, String>> = getRegistry().lock().unwrap();
   registry.remove(&id);
-}
-
-/// Requests loading a library into the current zygote
-fn sendLoadLibrary(_id: usize, _path: &str) -> Result<(), FFIError>
-{
-  // todo: Отправить ZygoteCommand::LoadLibrary в зиготу для кеширования
-  //   Пока что библиотека будет загружаться при каждом вызове через callById
-  //   - только резервирует место для будущего кеширования библиотек.
-  Ok(())
-}
-
-/// Requests unloading a library from the current zygote
-fn sendUnloadLibrary(_id: usize) -> Result<(), FFIError>
-{
-  // todo: Отправить ZygoteCommand::UnloadLibrary в зиготу
-  //   Пока операция является заглушкой до реализации кеширования.
-  Ok(())
 }
 
 /// Performs an FFI function call 
 /// by the identifier of the registered library
 fn callById(
   libraryId: usize,
+  libraryPath: &str,
   functionName: &str,
   args: Vec<Value>,
-  resultType: Type,
+  resultType: Type
 ) -> Result<Value, FFIError> 
 {
   // Check whether the global zygote in ZygoteState has been initialized
@@ -109,15 +93,15 @@ fn callById(
   }
 
   // Retrieve the path to the `.so` from the registry and construct an FFIRequest
-  let registry: MutexGuard<HashMap<usize, String>> = getRegistry().lock().unwrap();
-  let libraryPath: String = registry
-    .get(&libraryId)
-    .ok_or(FFIError::LibraryNotFound)?
-    .clone();
+  let registry: MutexGuard<FxHashMap<usize, String>> = getRegistry().lock().unwrap();
+  if !registry.contains_key(&libraryId) {
+     return Err(FFIError::LibraryNotFound{ libraryPath: libraryPath.to_string() });
+  }
+  
   drop(registry);
 
   let request: FFIRequest = FFIRequest {
-    libraryPath,
+    libraryPath: libraryPath.to_string(),
     functionName: functionName.to_string(),
     args,
     resultType,
@@ -135,7 +119,10 @@ fn callById(
     // Execute the FFI request through the current zygote
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),
-      Ok(FFIResponse::Err(err)) => Err(FFIError::CallFailed(err)),
+      Ok(FFIResponse::Err(err)) => Err(FFIError::CallFailed{ 
+        functionName: functionName.to_string(), 
+        message: err 
+      }),
       Err(err) => Err(FFIError::ZygoteCommunicationFailed(err)),
     }
   })
@@ -174,13 +161,15 @@ impl __Library<true>
     resultType: Type,
   ) -> Result<Value, FFIError>
   {
-    callById(self.libraryId, functionName, args, resultType)
+    callById(self.libraryId, &self.libraryPath, functionName, args, resultType)
   }
 
-  /// Unloads the library and removes it from the registry
+  /// Unloads the library and removes it from the registry;
+  ///
+  /// Here self instead of &self is used so that after removal it is not possible
+  /// to use the library further. The compiler sees this.
   pub fn unload(self) -> Result<(), FFIError>
   {
-    sendUnloadLibrary(self.libraryId)?;
     unregisterLibrary(self.libraryId);
     Ok(())
   }
@@ -191,11 +180,7 @@ impl __Library<true>
     let libraryId: usize = nextLibraryId();
     let ownedPath: String = String::from(libraryPath);
     registerLibrary(libraryId, &ownedPath);
-    match sendLoadLibrary(libraryId, &ownedPath)
-    {
-      Ok(()) => Ok(Self{ libraryId, libraryPath: ownedPath }),
-      Err(error) => { unregisterLibrary(libraryId); Err(error) }
-    }
+    Ok(Self{ libraryId, libraryPath: ownedPath })
   }
 }
 
