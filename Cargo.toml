@@ -12,10 +12,13 @@ readme = "README.md"
 # ======================================================================================================================
 
 #repository = "https://github.com/username/chillffi"
-#documentation = "https://docs.rs/chillffi"
 #keywords = ["ffi", "zygote", "ipc", "sandbox", "fork"]
 #categories = ["external-ffi-bindings", "os::unix-apis", "c-bindings", "api-bindings"]
 publish = false
+
+#documentation = "https://docs.rs/chillffi"
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 
 include = [
   "src/**/*",
@@ -72,6 +75,7 @@ libffi = { version = "5.2.0" }
 # В отличие от статически зашитых обёрток, libffi позволяет конструировать 
 # вызов на лету на основе описания типов, что хорошо для FFI.
 
+[target.'cfg(target_os = "linux")'.dependencies]
 libc = { version = "1.0.0-alpha.4" }
 # Предоставляет системные вызовы dup2/dup для временного 
 # перенаправления stdout → stderr, изолируя вывод библиотеки от служебного канала.

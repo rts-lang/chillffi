@@ -1,3 +1,6 @@
+#[cfg(not(target_os = "linux"))]
+compile_error!("chillffi supports only Linux operating systems.");
+// =================================================================================================
 pub mod worker;
 pub mod zygote;
 pub mod ffi;
