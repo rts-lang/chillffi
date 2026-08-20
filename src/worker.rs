@@ -2,6 +2,7 @@ use std::any::Any;
 use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};
 use std::ffi::c_void;
+use fxhash::FxHashMap;
 use crate::ffi::value::{Type, Value};
 use crate::zygote;
 use crate::zygote::{FFIRequest, FFIResponse};
@@ -40,18 +41,22 @@ pub fn callExternal(
 /// Выполняется ВНУТРИ форкнутого Зиготой воркера, не самой Зиготой;
 /// делает dlopen конкретной библиотеки и вызывает функцию через libffi;
 /// вызывается один раз на запрос, после чего воркер завершается.
-pub fn executeFFI(request: FFIRequest) -> Result<Value, String>
+pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, String>
 {
   let FFIRequest{ libraryPath, functionName, args, resultType: ffiResultType } = request;
 
   // ---- этот код выполняется в воркере, форкнутом от Зиготы ----
   // (все ресурсы будут автоматически освобождены при завершении процесса)
 
-  // Загружаем библиотеку
-  let library: Library = unsafe {
-    Library::new(&libraryPath)
-      .map_err(|e| format!("Failed to load library: {}", e))?
-  };
+  // Достаём библиотеку из кеша или загружаем с диска при первом вызове
+  if !cache.contains_key(&libraryPath) {
+    let lib: Library = unsafe {
+      Library::new(&libraryPath)
+        .map_err(|e| format!("Failed to load library: {}", e))?
+    };
+    cache.insert(libraryPath.clone(), lib);
+  }
+  let library: &Library = cache.get(&libraryPath).unwrap();
 
   // Получаем указатель на функцию
   let functionPointer: *mut c_void = unsafe {

@@ -7,6 +7,8 @@ use std::process::{Command, Child};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use bincode::config::Configuration;
+use fxhash::FxHashMap;
+use libloading::Library;
 use serde::{Serialize, Deserialize};
 use crate::ffi::value::{Type, Value};
 use crate::worker::executeFFI;
@@ -258,14 +260,14 @@ fn zygoteLoop(mut socket: UnixStream) -> !
         let _ = writeMessage(&mut socket, &0i32.to_le_bytes());
       }
       0 => {
-        // --- КЛОНЗИГОТА ---
+        // Клон-зигота
         if let Ok(cloneSocket) = UnixStream::connect(&cloneSockPath) {
           cloneLoop(cloneSocket);
         }
         std::process::exit(0);
       }
       pid => {
-        // --- ГЛАВНАЯ ЗИГОТА ---
+        // Главная зигота;
         // Возвращает PID клона рантайму и сразу ждёт следующий сигнал на клон
         let _ = writeMessage(&mut socket, &pid.to_le_bytes());
       }
@@ -277,6 +279,8 @@ fn zygoteLoop(mut socket: UnixStream) -> !
 /// Персональный цикл клона
 fn cloneLoop(mut socket: UnixStream) -> ! 
 {
+  let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
+  
   loop 
   {
     let requestBytes: Vec<u8> = match readMessage(&mut socket) 
@@ -285,7 +289,7 @@ fn cloneLoop(mut socket: UnixStream) -> !
       Err(_) => std::process::exit(0), // Переменную drop'нули — сокет закрылся, клон ушел
     };
 
-    let response: FFIResponse = handleRequest(&requestBytes);
+    let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
     if writeMessage(&mut socket, &encode(&response)).is_err() {
       std::process::exit(0);
     }
@@ -293,11 +297,11 @@ fn cloneLoop(mut socket: UnixStream) -> !
 }
 
 /// todo desc
-fn handleRequest(requestBytes: &[u8]) -> FFIResponse
+fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) -> FFIResponse
 {
   match decode::<FFIRequest>(requestBytes)
   {
-    Ok(request) => match executeFFI(request)
+    Ok(request) => match executeFFI(request, cache)
     {
       Ok(value) => FFIResponse::Ok(value),
       Err(e)    => FFIResponse::Err(e),

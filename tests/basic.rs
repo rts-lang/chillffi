@@ -40,7 +40,7 @@ fn testAbs() -> ()
 {
   setup();
   
-  let result: Value = ffi! {
+  let result: Value = ffi!{
     let libm: Library = Library::load("libm.so.6")?;
     let args: Vec<Value> = vec![Value::I32(-5)];
     Ok(libm.call("abs", args, Type::I32)?)
@@ -50,6 +50,41 @@ fn testAbs() -> ()
     assert_eq!(val, 5);
   } else {
     panic!("Expected I32");
+  }
+}
+
+/// Проверка повторных вызовов внутри одного ffi!{} (использует кешированный dlopen)
+#[test]
+fn testMultipleCallsInSingleFFI() -> ()
+{
+  setup();
+
+  let results: Vec<Value> = ffi!{
+    let libm: Library = Library::load("libm.so.6")?;
+    let mut outputs: Vec<Value> = Vec::with_capacity(10);
+
+    // 10 вызовов libm.call() подряд с единой загруженной библиотекой
+    for i in 1..=10 
+    {
+      let input: f64 = (i * i) as f64;
+      let args: Vec<Value> = vec![Value::F64(input)];
+      let res: Value = libm.call("sqrt", args, Type::F64)?;
+      outputs.push(res);
+    }
+
+    Ok(outputs)
+  }.expect("Batch FFI call failed");
+
+  assert_eq!(results.len(), 10);
+
+  for (i, val) in results.into_iter().enumerate() 
+  {
+    let expected: f64 = (i + 1) as f64;
+    if let Value::F64(actual) = val {
+      assert!((actual - expected).abs() < f64::EPSILON, "Expected {}, got {}", expected, actual);
+    } else {
+      panic!("Expected Value::F64 at index {}", i);
+    }
   }
 }
 
