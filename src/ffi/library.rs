@@ -8,7 +8,9 @@ use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
-/// Ошибки, возникающие при работе с загрузкой библиотек и выполнением вызовов
+/// Errors occurring during library loading and call execution
+/// 
+/// todo Тут нет описания каждой ошибки, что может быть полезно.
 #[derive(Debug)]
 pub enum FFIError
 {
@@ -44,38 +46,38 @@ impl<E: std::error::Error + 'static> From<E> for FFIError
 
 // =================================================================================================
 
-/// Счётчик для выдачи уникальных идентификаторов библиотекам
+/// Counter for assigning unique identifiers to libraries
 static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
-/// Глобальный реестр загруженных библиотек по их идентификаторам
+/// Global registry of loaded libraries by their identifiers
 static RegisteredLibraries: OnceLock<Mutex<HashMap<usize, String>>> = OnceLock::new();
 
-/// Возвращает следующий уникальный идентификатор библиотеки
+/// Returns the next unique library identifier
 fn nextLibraryId() -> usize
 {
   NextLibraryID.fetch_add(1, Ordering::SeqCst)
 }
 
-/// Возвращает общий реестр зарегистрированных библиотек
+/// Returns the global registry of registered libraries
 fn getRegistry() -> &'static Mutex<HashMap<usize, String>>
 {
   RegisteredLibraries.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Добавляет библиотеку в реестр по её идентификатору
+/// Adds a library to the registry by its identifier
 fn registerLibrary(id: usize, path: &str) -> ()
 {
   let mut registry = getRegistry().lock().unwrap();
   registry.insert(id, path.to_string());
 }
 
-/// Удаляет библиотеку из реестра по её идентификатору
+/// Removes a library from the registry by its identifier
 fn unregisterLibrary(id: usize) -> ()
 {
   let mut registry = getRegistry().lock().unwrap();
   registry.remove(&id);
 }
 
-/// Запрашивает загрузку библиотеки в текущую зиготу
+/// Requests loading a library into the current zygote
 fn sendLoadLibrary(_id: usize, _path: &str) -> Result<(), FFIError>
 {
   // todo: Отправить ZygoteCommand::LoadLibrary в зиготу для кеширования
@@ -84,7 +86,7 @@ fn sendLoadLibrary(_id: usize, _path: &str) -> Result<(), FFIError>
   Ok(())
 }
 
-/// Запрашивает выгрузку библиотеки из текущей зиготы
+/// Requests unloading a library from the current zygote
 fn sendUnloadLibrary(_id: usize) -> Result<(), FFIError>
 {
   // todo: Отправить ZygoteCommand::UnloadLibrary в зиготу
@@ -92,7 +94,8 @@ fn sendUnloadLibrary(_id: usize) -> Result<(), FFIError>
   Ok(())
 }
 
-/// Выполняет вызов FFI функции по идентификатору зарегистрированной библиотеки
+/// Performs an FFI function call 
+/// by the identifier of the registered library
 fn callById(
   libraryId: usize,
   functionName: &str,
@@ -100,12 +103,12 @@ fn callById(
   resultType: Type,
 ) -> Result<Value, FFIError> 
 {
-  // Проверяем, инициализирована ли глобальная зигота в ZygoteState
+  // Check whether the global zygote in ZygoteState has been initialized
   if ZygoteState.get().is_none() {
     return Err(FFIError::ZygoteNotInitialized);
   }
 
-  // Достаем путь к `.so`/`.dll` из реестра и формируем FFIRequest
+  // Retrieve the path to the `.so` from the registry and construct an FFIRequest
   let registry: MutexGuard<HashMap<usize, String>> = getRegistry().lock().unwrap();
   let libraryPath: String = registry
     .get(&libraryId)
@@ -119,17 +122,17 @@ fn callById(
     args,
     resultType,
   };
-  
-  // Ищем активный клон в локальном стеке текущего потока
+
+  // Search for the active clone in the local stack of the current thread
   ZygoteStack.with(|stack| {
     let mut mutStack = stack.borrow_mut();
 
-    // Если стек пуст — значит вызов идет вне контекста ffi!{}
+    // If the stack is empty — it means the call is being made outside the context of ffi!{}
     let zygote: &mut ClonedZygote = mutStack
       .last_mut()
       .ok_or(FFIError::NoActiveZygoteScope)?;
 
-    // Выполняем FFI запрос через текущую зиготу
+    // Execute the FFI request through the current zygote
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),
       Ok(FFIResponse::Err(err)) => Err(FFIError::CallFailed(err)),
@@ -140,30 +143,30 @@ fn callById(
 
 // =================================================================================================
 
-/// Дескриптор загруженной библиотеки с ограничением доступных методов
+/// Handle of the loaded library with a restriction on available methods
 #[doc(hidden)]
 pub struct __Library<const Allowed: bool = false>
 {
-  // Идентификатор библиотеки внутри менеджера
+  /// Library identifier
   libraryId: usize,
-  // Путь к загруженной библиотеке
+  /// Путь к загруженной библиотеке
   libraryPath: String
 }
 
-/// Методы, доступные всегда (id, и т.д.)
+// Methods that are always available
 impl<const Allowed: bool> __Library<Allowed>
 {
-  /// Возвращает идентификатор библиотеки
+  /// Returns the library identifier
   pub fn id(&self) -> usize
   {
     self.libraryId
   }
 }
 
-// Методы, доступные только внутри ffi!{}
+// Methods available only inside ffi!{}
 impl __Library<true>
 {
-  /// Выполняет вызов функции из загруженной библиотеки
+  /// Executes a function call from the loaded library
   pub fn call(
     &self,
     functionName: &str,
@@ -174,7 +177,7 @@ impl __Library<true>
     callById(self.libraryId, functionName, args, resultType)
   }
 
-  /// Выгружает библиотеку и удаляет её из реестра
+  /// Unloads the library and removes it from the registry
   pub fn unload(self) -> Result<(), FFIError>
   {
     sendUnloadLibrary(self.libraryId)?;
@@ -182,7 +185,7 @@ impl __Library<true>
     Ok(())
   }
 
-  /// Загружает библиотеку и регистрирует её для дальнейших вызовов
+  /// Loads the library and registers it for further calls
   pub fn load(libraryPath: &str) -> Result<Self, FFIError>
   {
     let libraryId: usize = nextLibraryId();
@@ -196,10 +199,10 @@ impl __Library<true>
   }
 }
 
-/// Публичный тип снаружи — без load/call
+/// Public type from the outside
 pub type Library = __Library<false>;
 
-/// Скрытый тип для ffi! — с load/call
+/// Hidden type for ffi!
 #[doc(hidden)]
 pub type __FFILibrary = __Library<true>;
 

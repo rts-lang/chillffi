@@ -1,27 +1,37 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("chillffi supports only Linux operating systems.");
+// Currently available only on Linux, although it should work on UNIX in general.
+// But I have not tested it on macOS.
+
 // =================================================================================================
+
 pub mod worker;
 pub mod zygote;
 pub mod ffi;
-// =================================================================================================
-use std::{env, io};
-use crate::zygote::{initZygote, runAsZygote, ZygoteFlag};
+
 // =================================================================================================
 
-/// Единая точка входа для инициализации зиготы в любом бинарнике (включая тесты).
-/// Проверяет, не запущен ли процесс как зигота; если да – переключается в режим демона,
-/// иначе – инициализирует родительскую сторону.
+use std::{env, io};
+use crate::zygote::{initZygote, runAsZygote, ZygoteFlag};
+
+// =================================================================================================
+
+/// Single entry point for zygote initialization in any binary (including tests).
+/// Checks whether the process is running as a zygote; if so — switches to daemon mode,
+/// otherwise — initializes the parent side.
 #[ctor::ctor(unsafe)]
 fn zygoteEntrypoint() -> ()
 {
   let mut args = env::args_os();
   args.next();
-  if let Some(arg) = args.next() {
-    if arg == ZygoteFlag {
+  if let Some(arg) = args.next() 
+  {
+    if arg == ZygoteFlag 
+    {
       runAsZygote();
     }
   }
+  //
 }
 
 /// todo desc

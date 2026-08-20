@@ -5,8 +5,9 @@ use chillffi::{ffi, setupZygote};
 
 static Init: Once = Once::new();
 
-/// Инициализирует окружение FFI один раз перед выполнением тестов.
-/// Использует Once для безопасного однократного запуска setupZygote().
+/// Initializes the FFI environment once before running tests.
+/// 
+/// Uses Once for a safe one-time execution of setupZygote().
 fn setup() -> ()
 {
   Init.call_once(|| {
@@ -16,7 +17,7 @@ fn setup() -> ()
 
 // =================================================================================================
 
-/// Проверка вызова функции sqrt из библиотеки libm
+/// Checks calling the sqrt function from the libm library.
 #[test]
 fn testSqrt() -> ()
 {
@@ -35,7 +36,7 @@ fn testSqrt() -> ()
   }
 }
 
-/// Проверка вызова функции abs из библиотеки libm
+/// Checks calling the abs function from the libm library.
 #[test]
 fn testAbs() -> ()
 {
@@ -56,7 +57,7 @@ fn testAbs() -> ()
 
 // =================================================================================================
 
-/// Проверка повторных вызовов внутри одного ffi!{} - использует кешированный dlopen.
+/// Checks repeated calls inside a single ffi!{} - uses cached dlopen.
 #[test]
 fn testMultipleCallsInSingleFFI() -> ()
 {
@@ -66,7 +67,7 @@ fn testMultipleCallsInSingleFFI() -> ()
     let libm: Library = Library::load("libm.so.6")?;
     let mut outputs: Vec<Value> = Vec::with_capacity(10);
 
-    // 10 вызовов libm.call() подряд с единой загруженной библиотекой
+    // 10 consecutive libm.call() calls with a single loaded library
     for i in 1..=10 
     {
       let input: f64 = (i * i) as f64;
@@ -93,7 +94,7 @@ fn testMultipleCallsInSingleFFI() -> ()
 
 // =================================================================================================
 
-/// Проверка передачи Value::None в качестве аргумента - должна возвращаться ошибка.
+/// Checks passing Value::None as an argument - should return an error.
 #[test]
 fn testNoneArgumentFails() -> ()
 {
@@ -106,7 +107,7 @@ fn testNoneArgumentFails() -> ()
     Ok(res)
   };
 
-  assert!(result.is_err(), "Вызов FFI с Value::None должен завершаться ошибкой");
+  assert!(result.is_err(), "FFI call with Value::None should fail");
 }
 
 // =================================================================================================
