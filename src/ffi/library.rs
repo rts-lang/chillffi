@@ -1,8 +1,11 @@
+use std::sync::MutexGuard;
+use crate::zygote::ClonedZygote;
+use crate::zygote::ZygoteState;
 use crate::ffi::value::{Type, Value};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
@@ -11,6 +14,7 @@ use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 pub enum FFIError
 {
   ZygoteNotInitialized,
+  NoActiveZygoteScope,
   ZygoteCommunicationFailed(String),
   LibraryLoadFailed(String),
   LibraryNotFound,
@@ -97,8 +101,15 @@ fn callById(
   resultType: Type,
 ) -> Result<Value, FFIError> 
 {
+  // Проверяем, инициализирована ли глобальная зигота в ZygoteState
+  if ZygoteState.get().is_none() {
+    return Err(FFIError::ZygoteNotInitialized);
+  }
+
+  // Достаем путь к `.so`/`.dll` из реестра и формируем FFIRequest
   let registry: MutexGuard<HashMap<usize, String>> = getRegistry().lock().unwrap();
-  let libraryPath: String = registry.get(&libraryId)
+  let libraryPath: String = registry
+    .get(&libraryId)
     .ok_or(FFIError::LibraryNotFound)?
     .clone();
   drop(registry);
@@ -109,16 +120,21 @@ fn callById(
     args,
     resultType,
   };
-
-  // Выбираем клон Зиготы, созданный в текущем блоке ffi!{}
+  
+  // Ищем активный клон в локальном стеке текущего потока
   ZygoteStack.with(|stack| {
-    let mut mut_stack = stack.borrow_mut();
-    let zygote = mut_stack.last_mut().ok_or(FFIError::ZygoteNotInitialized)?;
+    let mut mutStack = stack.borrow_mut();
 
+    // Если стек пуст — значит вызов идет вне контекста ffi!{}
+    let zygote: &mut ClonedZygote = mutStack
+      .last_mut()
+      .ok_or(FFIError::NoActiveZygoteScope)?;
+
+    // Выполняем FFI запрос через текущую зиготу
     match zygote.call(request) {
-      Ok(FFIResponse::Ok(value)) => Ok(value),
-      Ok(FFIResponse::Err(e)) => Err(FFIError::CallFailed(e)),
-      Err(e) => Err(FFIError::ZygoteCommunicationFailed(e)),
+      Ok(FFIResponse::Ok(val)) => Ok(val),
+      Ok(FFIResponse::Err(err)) => Err(FFIError::CallFailed(err)),
+      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err)),
     }
   })
 }
