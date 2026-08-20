@@ -121,7 +121,9 @@ fn prepareFFIArgs<'a>(
       Value::F64(v) => storage.push(Box::new(*v)),
       Value::Bool(b) => storage.push(Box::new(if *b { 1u8 } else { 0u8 })),
       Value::ByteVector(v) => {
-        // Для байтового вектора передаём указатель на данные
+        // Для байтового вектора передаём указатель на данные;
+        // Важно: Если C-коду надо будет его на долгое время - это его забота.
+        // Указатель будет удален нами, потому что он временный + работа процесса зиготы.
         let mut vec: Vec<u8> = v.clone();
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
         storage.push(Box::new((vec, pointer)));

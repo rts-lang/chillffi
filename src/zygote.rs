@@ -1,9 +1,10 @@
 use std::cell::RefCell;
 use std::env;
 use std::io::{self, Read, Write};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::{UnixStream};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd, OwnedFd};
 use std::path::PathBuf;
-use std::process::{Command, Child};
+use std::process::{Command, Child, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use bincode::config::Configuration;
@@ -78,9 +79,7 @@ pub(super) struct ZygoteHandle
   /// Дочерний процесс зиготы
   process: Child,
   /// Сокет для обмена запросами и ответами с процессом
-  pub(super) socket: UnixStream,
-  /// Путь к файлу Unix-сокета
-  socketPath: PathBuf
+  pub(super) socket: UnixStream
 }
 
 impl Drop for ZygoteHandle
@@ -89,7 +88,6 @@ impl Drop for ZygoteHandle
   fn drop(&mut self) -> ()
   {
     let _ = self.process.kill();
-    let _ = std::fs::remove_file(&self.socketPath);
   }
 }
 
@@ -115,24 +113,18 @@ impl ClonedZygote
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
 
-    let uniqueId: u128 = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-    let cloneSockPath: PathBuf = env::temp_dir().join(format!("zygote-clone-{}.sock", uniqueId));
+    // Отправляем сигнал на создание клона
+    writeMessage(&mut guard.socket, &[1u8])?;
 
-    let listener: UnixListener = UnixListener::bind(&cloneSockPath)?; // todo Может failed, если нет места в /tmp или ограничения на количество файлов?
-
-    // 1. Передаем Главной Зиготе путь сокета, куда должен подключиться её клон
-    writeMessage(&mut guard.socket, cloneSockPath.to_str().unwrap().as_bytes())?;
-
-    // 2. Получаем PID форкнутого клона
+    // Получаем PID клона
     let pidBytes: Vec<u8> = readMessage(&mut guard.socket)?;
-    drop(guard);
     let pid: i32 = i32::from_le_bytes(pidBytes.try_into().unwrap());
 
-    // 3. Принимаем подключение от клона
-    let (socket, _): (UnixStream, _) = listener.accept()?;
-    let _ = std::fs::remove_file(&cloneSockPath);
+    // Читаем дескриптор сокета напрямую из RAM
+    let fd: RawFd = recvFd(&mut guard.socket)?;
+    let socket: UnixStream = unsafe { UnixStream::from_raw_fd(fd) };
 
+    drop(guard);
     Ok(Self { pid, socket })
   }
 
@@ -152,7 +144,6 @@ impl Drop for ClonedZygote
   {
     unsafe {
       libc::kill(self.pid, libc::SIGKILL);
-      libc::waitpid(self.pid, std::ptr::null_mut(), libc::WNOHANG);
     }
   }
 }
@@ -199,8 +190,8 @@ impl Drop for ZygoteGuard
 /// Лишних задач нет, кучи метаданных нет. Библиотеку заранее НЕ грузит.
 pub (super) fn runAsZygote() -> !
 {
-  let socketPath: String = env::args().nth(2).expect("Zygote: missing socket path");
-  let socket: UnixStream = UnixStream::connect(&socketPath).expect("Zygote: cannot connect to runtime");
+  // Забираем сокет прямо из STDIN
+  let socket: UnixStream = unsafe { UnixStream::from_raw_fd(libc::STDIN_FILENO) };
   zygoteLoop(socket);
 }
 
@@ -223,23 +214,17 @@ pub(super) fn initZygote() -> io::Result<()>
 /// успел стать runtime к моменту respawn'а.
 pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 {
-  let uniqueId: u128 = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-  let socketPath: PathBuf = env::temp_dir()
-    .join(format!("runtime-zygote-{}-{}.sock", std::process::id(), uniqueId)); // todo Какая-то фигня с .sock?
-  let _ = std::fs::remove_file(&socketPath);
-
-  let listener: UnixListener = UnixListener::bind(&socketPath)?; // todo Может failed, если нет места в /tmp или ограничения на количество файлов?
-
+  // Создаем парный сокет прямо в RAM без участия файловой системы
+  let (runtimeSocket, zygoteSocket): (UnixStream, UnixStream) = UnixStream::pair()?;
+  
+  //
   let currentExe: PathBuf = env::current_exe()?; // todo Может failed, если путь к исполняемому файлу слишком длинный или нет прав?
   let process: Child = Command::new(currentExe)
     .arg(ZygoteFlag)
-    .arg(&socketPath)
+    .stdin(Stdio::from(OwnedFd::from(zygoteSocket)))
     .spawn()?;
 
-  let (socket, _addr) = listener.accept()?;
-
-  Ok(ZygoteHandle{ process, socket, socketPath })
+  Ok(ZygoteHandle{ process, socket: runtimeSocket })
 }
 
 /// Цикл главной зиготы: бесконечный цикл ожидания команд.
@@ -247,17 +232,28 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 /// заранее. Зигота — пустой рантайм-шаблон; dlopen делает только форкнутый зигота.
 fn zygoteLoop(mut socket: UnixStream) -> !
 {
-  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); } // Авто-reap зигот, без зомби
+  // Важно: Игнорирование SIGCHLD нужно только в главной Зиготе.
+  // Это заставляет ядро ОС автоматически очищать её клоны при завершении (без зомби).
+  // В main runtime это писать нельзя: там waitpid в supervisorLoop() отслеживает сам процесс Зиготы,
+  // и при SIG_IGN он упадет с ECHILD и уйдет в гарантированную нагрузку CPU.
+  unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); }
 
-  loop {
+  //
+  loop 
+  {
     // Получаем путь к сокету для нового клона
-    let msg: Vec<u8> = match readMessage(&mut socket) 
-    {
-      Ok(bytes) => bytes,
-      Err(_) => std::process::exit(0), // Parent умер
-    };
+    if readMessage(&mut socket).is_err() {
+      std::process::exit(0); // Parent умер
+    }
 
-    let cloneSockPath: String = String::from_utf8_lossy(&msg).to_string();
+    // Создаем парный сокет в памяти для нового клона
+    let (runtimeSocket, cloneSocket): (UnixStream, UnixStream) = match UnixStream::pair() {
+      Ok(pair) => pair,
+      Err(_) => {
+        let _ = writeMessage(&mut socket, &0i32.to_le_bytes());
+        continue;
+      }
+    };
 
     match unsafe { libc::fork() } 
     {
@@ -265,16 +261,16 @@ fn zygoteLoop(mut socket: UnixStream) -> !
         let _ = writeMessage(&mut socket, &0i32.to_le_bytes());
       }
       0 => {
-        // Клон-зигота
-        if let Ok(cloneSocket) = UnixStream::connect(&cloneSockPath) {
-          cloneLoop(cloneSocket);
-        }
-        std::process::exit(0);
+        // Клон-зигота: закрываем родительскую сторону и уходим в цикл
+        drop(runtimeSocket);
+        cloneLoop(cloneSocket);
       }
       pid => {
-        // Главная зигота;
-        // Возвращает PID клона рантайму и сразу ждёт следующий сигнал на клон
-        let _ = writeMessage(&mut socket, &pid.to_le_bytes());
+        // Главная зигота: отправляем PID и пересылаем дескриптор сокета в Runtime
+        drop(cloneSocket);
+        if writeMessage(&mut socket, &pid.to_le_bytes()).is_ok() {
+          let _ = sendFd(&mut socket, runtimeSocket.as_raw_fd());
+        }
       }
     }
     //
@@ -401,6 +397,80 @@ pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, binc
 {
   let config: Configuration = bincode::config::standard();
   bincode::serde::decode_from_slice(bytes, config).map(|(decoded, _bytes_read)| decoded)
+}
+
+// =================================================================================================
+
+/// Передает сокет-дескриптор в другой процесс через анонимный канал
+fn sendFd(socket: &mut UnixStream, fd: RawFd) -> io::Result<()> 
+{
+  // По стандарту POSIX для передачи cmsg нужен хотя бы 1 байт реальных данных
+  let mut msgHeader: libc::msghdr = unsafe { std::mem::zeroed() };
+  let mut dummyByte: [u8; 1] = [0u8; 1];
+
+  let mut ioVector: libc::iovec = libc::iovec {
+    iov_base: dummyByte.as_mut_ptr() as *mut _,
+    iov_len: 1,
+  };
+
+  // Выделяем память под служебное сообщение и упаковываем FD в структуру SCM_RIGHTS
+  let cmsgSpace: u32 = unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as u32) };
+  let mut cmsgBuffer: Vec<u8> = vec![0u8; cmsgSpace as usize];
+
+  msgHeader.msg_iov = &mut ioVector;
+  msgHeader.msg_iovlen = 1;
+  msgHeader.msg_control = cmsgBuffer.as_mut_ptr() as *mut _;
+  msgHeader.msg_controllen = cmsgBuffer.len() as _;
+
+  unsafe {
+    let cmsg: *mut libc::cmsghdr = libc::CMSG_FIRSTHDR(&msgHeader);
+    (*cmsg).cmsg_level = libc::SOL_SOCKET;
+    (*cmsg).cmsg_type = libc::SCM_RIGHTS;
+    (*cmsg).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as u32) as _;
+
+    let fdPtr: *mut RawFd = libc::CMSG_DATA(cmsg) as *mut RawFd;
+    fdPtr.write_unaligned(fd);
+  }
+
+  // Отправляем управляющий пакет через системный вызов ядра
+  let result: libc::ssize_t = unsafe { libc::sendmsg(socket.as_raw_fd(), &msgHeader, 0) };
+  if result < 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
+}
+
+/// Принимает сокет-дескриптор напрямую из памяти другого процесса
+fn recvFd(socket: &mut UnixStream) -> io::Result<RawFd> 
+{
+  // Готовим буферы для приема байта-пустышки и служебного заголовка
+  let mut msgHeader: libc::msghdr = unsafe { std::mem::zeroed() };
+  let mut dummyByte: [u8; 1] = [0u8; 1];
+
+  let mut ioVector: libc::iovec = libc::iovec {
+    iov_base: dummyByte.as_mut_ptr() as *mut _,
+    iov_len: 1,
+  };
+
+  let cmsgSpace: u32 = unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as u32) };
+  let mut cmsgBuffer: Vec<u8> = vec![0u8; cmsgSpace as usize];
+
+  msgHeader.msg_iov = &mut ioVector;
+  msgHeader.msg_iovlen = 1;
+  msgHeader.msg_control = cmsgBuffer.as_mut_ptr() as *mut _;
+  msgHeader.msg_controllen = cmsgBuffer.len() as _;
+
+  // Читаем сообщение из сокета
+  let result: libc::ssize_t = unsafe { libc::recvmsg(socket.as_raw_fd(), &mut msgHeader as *mut _, 0) };
+  if result <= 0 { return Err(io::Error::last_os_error()); }
+
+  // Проверяем наличие прав доступа и извлекаем полученный дескриптор
+  unsafe {
+    let cmsg: *mut libc::cmsghdr = libc::CMSG_FIRSTHDR(&msgHeader);
+    if cmsg.is_null() || (*cmsg).cmsg_type != libc::SCM_RIGHTS {
+      return Err(io::Error::new(io::ErrorKind::InvalidData, "No FD received"));
+    }
+
+    let fdPtr: *const RawFd = libc::CMSG_DATA(cmsg) as *const RawFd;
+    Ok(fdPtr.read_unaligned())
+  }
 }
 
 // =================================================================================================
