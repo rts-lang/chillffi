@@ -3,6 +3,59 @@ name = "chillffi"
 version = "0.1.0"
 edition = "2024"
 
+#
+authors = ["miruji <miruji@protonmail.com>"]
+description = "A simple isolated dynamic FFI framework for Rust"
+license-file = "LICENCE.md" # FCL
+readme = "README.md"
+
+# ======================================================================================================================
+
+#repository = "https://github.com/username/chillffi"
+#documentation = "https://docs.rs/chillffi"
+#keywords = ["ffi", "zygote", "ipc", "sandbox", "fork"]
+#categories = ["external-ffi-bindings", "os::unix-apis", "c-bindings", "api-bindings"]
+publish = false
+
+include = [
+  "src/**/*",
+  "examples/**/*", # Примеры остаются для удобства
+  "Cargo.toml",
+  "README.md",
+  "LICENSE.md",
+]
+
+# ======================================================================================================================
+
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+# ======================================================================================================================
+
+# Сборка в качестве cdylib не предусмотрена. Работает только в Rust.
+
+# ======================================================================================================================
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+overflow-checks = false
+debug  = false
+incremental = false
+rpath = false
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+lto = false
+incremental = true
+
 # ======================================================================================================================
 
 [dependencies]
@@ -13,17 +66,17 @@ libloading = { version = "0.9.0" }
 # Используется для динамической загрузки библиотек (libraryPath) 
 # и получения указателей на функции (methodName), которые затем вызываются.
 
-libffi = { version = "5.1.1" }
+libffi = { version = "5.2.0" }
 # Предоставляет динамический вызов C-функций с произвольной сигнатурой 
 # (количество и типы аргументов, тип возврата) во время выполнения. 
 # В отличие от статически зашитых обёрток, libffi позволяет конструировать 
 # вызов на лету на основе описания типов, что хорошо для FFI.
 
-libc = { version = "1.0.0-alpha.3" }
+libc = { version = "1.0.0-alpha.4" }
 # Предоставляет системные вызовы dup2/dup для временного 
 # перенаправления stdout → stderr, изолируя вывод библиотеки от служебного канала.
 
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 # Сериализация и десериализация структур запросов и ответов
 
 ctor = "1.0.13"
