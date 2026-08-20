@@ -112,34 +112,35 @@ impl ClonedZygote
   /// Запрашивает клон у Главной Зиготы и возвращает его RAII-хэндл
   pub fn getMeClone() -> io::Result<Self>
   {
-    let mutex = ZygoteState.get().expect("Zygote not initialized");
-    let mut guard = mutex.lock().unwrap();
+    let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
 
-    let uniqueId = std::time::SystemTime::now()
+    let uniqueId: u128 = std::time::SystemTime::now()
       .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-    let cloneSockPath = env::temp_dir().join(format!("zygote-clone-{}.sock", uniqueId));
+    let cloneSockPath: PathBuf = env::temp_dir().join(format!("zygote-clone-{}.sock", uniqueId));
 
-    let listener = UnixListener::bind(&cloneSockPath)?;
+    let listener: UnixListener = UnixListener::bind(&cloneSockPath)?; // todo Может failed, если нет места в /tmp или ограничения на количество файлов?
 
     // 1. Передаем Главной Зиготе путь сокета, куда должен подключиться её клон
     writeMessage(&mut guard.socket, cloneSockPath.to_str().unwrap().as_bytes())?;
 
     // 2. Получаем PID форкнутого клона
-    let pidBytes = readMessage(&mut guard.socket)?;
-    let pid = i32::from_le_bytes(pidBytes.try_into().unwrap());
+    let pidBytes: Vec<u8> = readMessage(&mut guard.socket)?;
+    drop(guard);
+    let pid: i32 = i32::from_le_bytes(pidBytes.try_into().unwrap());
 
     // 3. Принимаем подключение от клона
-    let (socket, _) = listener.accept()?;
+    let (socket, _): (UnixStream, _) = listener.accept()?;
     let _ = std::fs::remove_file(&cloneSockPath);
 
-    Ok(ClonedZygote { pid, socket })
+    Ok(Self { pid, socket })
   }
 
   /// Вызов FFI внутри конкретного клона
   pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
   {
-    let bytes = encode(&request);
-    let responseBytes = sendAndReceive(&mut self.socket, &bytes).map_err(|e| e.to_string())?;
+    let bytes: Vec<u8> = encode(&request);
+    let responseBytes: Vec<u8> = sendAndReceive(&mut self.socket, &bytes).map_err(|e| e.to_string())?;
     decode(&responseBytes).map_err(|e| e.to_string())
   }
 }
@@ -174,7 +175,7 @@ impl ZygoteGuard
     ZygoteStack.with(|stack| {
       stack.borrow_mut().push(zygote);
     });
-    ZygoteGuard
+    Self
   }
 }
 
@@ -228,9 +229,9 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
     .join(format!("runtime-zygote-{}-{}.sock", std::process::id(), uniqueId)); // todo Какая-то фигня с .sock?
   let _ = std::fs::remove_file(&socketPath);
 
-  let listener: UnixListener = UnixListener::bind(&socketPath)?;
+  let listener: UnixListener = UnixListener::bind(&socketPath)?; // todo Может failed, если нет места в /tmp или ограничения на количество файлов?
 
-  let currentExe: PathBuf = env::current_exe()?;
+  let currentExe: PathBuf = env::current_exe()?; // todo Может failed, если путь к исполняемому файлу слишком длинный или нет прав?
   let process: Child = Command::new(currentExe)
     .arg(ZygoteFlag)
     .arg(&socketPath)

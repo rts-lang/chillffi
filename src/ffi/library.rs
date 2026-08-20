@@ -35,7 +35,7 @@ impl std::fmt::Display for FFIError
 impl<E: std::error::Error + 'static> From<E> for FFIError
 {
   fn from(err: E) -> Self {
-    FFIError::Other(err.to_string())
+    Self::Other(err.to_string())
   }
 }
 
@@ -168,14 +168,14 @@ impl __Library<true>
   }
 
   /// Загружает библиотеку и регистрирует её для дальнейших вызовов
-  pub fn load(libraryPath: &str) -> Result<__Library<true>, FFIError>
+  pub fn load(libraryPath: &str) -> Result<Self, FFIError>
   {
     let libraryId: usize = nextLibraryId();
     let ownedPath: String = String::from(libraryPath);
     registerLibrary(libraryId, &ownedPath);
     match sendLoadLibrary(libraryId, &ownedPath)
     {
-      Ok(()) => Ok(__Library { libraryId, libraryPath: ownedPath }),
+      Ok(()) => Ok(Self{ libraryId, libraryPath: ownedPath }),
       Err(error) => { unregisterLibrary(libraryId); Err(error) }
     }
   }
