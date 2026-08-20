@@ -1,4 +1,3 @@
-use std::env::args;
 use std::any::Any;
 use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};

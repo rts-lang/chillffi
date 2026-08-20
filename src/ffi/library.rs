@@ -2,7 +2,6 @@ use std::sync::MutexGuard;
 use crate::zygote::ClonedZygote;
 use crate::zygote::ZygoteState;
 use crate::ffi::value::{Type, Value};
-use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -203,49 +202,5 @@ pub type Library = __Library<false>;
 /// Скрытый тип для ffi! — с load/call
 #[doc(hidden)]
 pub type __FFILibrary = __Library<true>;
-
-// =================================================================================================
-
-/// Способ указания библиотеки для выполнения вызова
-#[derive(Serialize, Deserialize)]
-pub enum CallTarget
-{
-  Path(String),
-  LibraryId(u64)
-}
-
-/// Описание запроса на выполнение FFI функции
-#[derive(Serialize, Deserialize)]
-pub struct CallRequest
-{
-  pub target: CallTarget,
-  pub functionName: String,
-  pub args: Vec<Value>,
-  pub resultType: Type
-}
-
-/// Команды управления загрузкой библиотек и выполнения вызовов
-#[derive(Serialize, Deserialize)]
-pub enum ZygoteCommand
-{
-  LoadLibrary(LoadLibraryRequest),
-  UnloadLibrary(UnloadLibraryRequest),
-  Call(CallRequest)
-}
-
-/// Запрос на загрузку библиотеки и сохранение её идентификатора
-#[derive(Serialize, Deserialize)]
-pub struct LoadLibraryRequest
-{
-  pub libraryId: u64,
-  pub libraryPath: String
-}
-
-/// Запрос на выгрузку ранее загруженной библиотеки
-#[derive(Serialize, Deserialize)]
-pub struct UnloadLibraryRequest
-{
-  pub libraryId: u64
-}
 
 // =================================================================================================
