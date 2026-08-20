@@ -50,21 +50,21 @@ use crate::worker::executeFFI;
 /// Скрытый флаг запуска: если он первый аргумент — это не runtime, а процесс-Зигота.
 pub const ZygoteFlag: &str = "__zygote";
 
-/// Запрос на выполнение FFI, уходящий в Зиготу целиком (она не знает про Token/StructureType).
+/// Запрос на выполнение FFI, уходящий в Зиготу целиком
 #[derive(Serialize, Deserialize)]
 pub struct FFIRequest
 {
-  /// todo desc
+  /// Путь к библиотеке, в которой находится вызываемая функция
   pub libraryPath: String,
-  /// todo desc
+  /// Имя функции для вызова в загруженной библиотеке
   pub functionName: String,
-  /// todo desc
+  /// Аргументы, передаваемые в функцию
   pub args: Vec<Value>,
-  /// todo desc
+  /// Ожидаемый тип возвращаемого значения
   pub resultType: Type
 }
 
-/// todo desc
+/// Ответ на запрос с результатом выполнения или ошибкой
 #[derive(Serialize, Deserialize)]
 pub enum FFIResponse
 {
@@ -72,46 +72,46 @@ pub enum FFIResponse
   Err(String)
 }
 
-/// todo desc
+/// Управляет процессом зиготы и каналом связи с ним
 pub(super) struct ZygoteHandle
 {
-  /// todo desc
+  /// Дочерний процесс зиготы
   process: Child,
-  /// todo desc
+  /// Сокет для обмена запросами и ответами с процессом
   pub(super) socket: UnixStream,
-  /// todo desc
+  /// Путь к файлу Unix-сокета
   socketPath: PathBuf
 }
 
 impl Drop for ZygoteHandle
 {
-  /// todo desc
-  fn drop(&mut self)
+  /// Завершает процесс зиготы и удаляет временный сокет
+  fn drop(&mut self) -> ()
   {
     let _ = self.process.kill();
     let _ = std::fs::remove_file(&self.socketPath);
   }
 }
 
-/// todo desc
+/// Глобальное состояние активной зиготы с синхронизацией доступа
 pub(super) static ZygoteState: OnceLock<Mutex<ZygoteHandle>> = OnceLock::new();
 
 // =================================================================================================
 
-/// todo desc
+/// RAII-хэндл для отдельного процесса-клона зиготы
 pub struct ClonedZygote 
 {
-  /// todo desc
+  /// PID процесса
   pub pid: libc::pid_t,
-  /// todo desc
+  /// Сокет для обмена запросами
   pub socket: UnixStream,
 }
 
-/// todo desc
 impl ClonedZygote 
 {
   /// Запрашивает клон у Главной Зиготы и возвращает его RAII-хэндл
-  pub fn getMeClone() -> io::Result<Self> {
+  pub fn getMeClone() -> io::Result<Self>
+  {
     let mutex = ZygoteState.get().expect("Zygote not initialized");
     let mut guard = mutex.lock().unwrap();
 
@@ -136,16 +136,19 @@ impl ClonedZygote
   }
 
   /// Вызов FFI внутри конкретного клона
-  pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String> {
+  pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
+  {
     let bytes = encode(&request);
     let responseBytes = sendAndReceive(&mut self.socket, &bytes).map_err(|e| e.to_string())?;
     decode(&responseBytes).map_err(|e| e.to_string())
   }
 }
 
-// При drop() клон моментально убивается, Главная Зигота не затрагивается
-impl Drop for ClonedZygote {
-  fn drop(&mut self) {
+impl Drop for ClonedZygote 
+{
+  /// При drop() клон моментально убивается, Главная Зигота не затрагивается
+  fn drop(&mut self) -> ()
+  {
     unsafe {
       libc::kill(self.pid, libc::SIGKILL);
       libc::waitpid(self.pid, std::ptr::null_mut(), libc::WNOHANG);
@@ -160,13 +163,14 @@ thread_local!{
   pub(crate) static ZygoteStack: RefCell<Vec<ClonedZygote>> = const { RefCell::new(Vec::new()) };
 }
 
-/// todo desc
+/// RAII-охранник активной зиготы в стеке текущего потока.
 pub struct ZygoteGuard;
 
 impl ZygoteGuard 
 {
-  /// todo desc
-  pub fn enter(zygote: ClonedZygote) -> Self {
+  /// Добавляет зиготу в стек и возвращает охранник её времени жизни.
+  pub fn enter(zygote: ClonedZygote) -> Self 
+  {
     ZygoteStack.with(|stack| {
       stack.borrow_mut().push(zygote);
     });
@@ -178,7 +182,7 @@ impl Drop for ZygoteGuard
 {
   /// Снимаем со стека именно эту зиготу,
   /// и Rust автоматически вызывает её drop(), убивая процесс.
-  fn drop(&mut self) 
+  fn drop(&mut self) -> ()
   {
     ZygoteStack.with(|stack| {
       stack.borrow_mut().pop();
@@ -296,7 +300,8 @@ fn cloneLoop(mut socket: UnixStream) -> !
   }
 }
 
-/// todo desc
+/// Обрабатывает входящий запрос и выполняет FFI операцию с использованием кеша библиотек.
+/// Возвращает результат выполнения или описание ошибки.
 fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) -> FFIResponse
 {
   match decode::<FFIRequest>(requestBytes)
@@ -332,7 +337,7 @@ pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
   decode(&responseBytes).map_err(|e| e.to_string())
 }
 
-/// todo desc
+/// Отправляет сообщение через сокет и ожидает ответ
 pub(super) fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Result<Vec<u8>>
 {
   writeMessage(socket, bytes)?;
@@ -341,7 +346,7 @@ pub(super) fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Resul
 
 /// Супервизор: блокируется на смерти текущей Зиготы (waitpid) и пересоздаёт её.
 /// Отдельный поток — поэтому spawnZygote() внутри обязан идти через Command, не через fork().
-fn supervisorLoop()
+fn supervisorLoop() -> ()
 {
   loop
   {
@@ -367,14 +372,14 @@ fn supervisorLoop()
 
 // =================================================================================================
 
-/// todo desc
+/// Записывает сообщение в сокет с добавлением размера данных
 fn writeMessage(socket: &mut UnixStream, data: &[u8]) -> io::Result<()>
 {
   socket.write_all(&(data.len() as u32).to_le_bytes())?;
   socket.write_all(data)
 }
 
-/// todo desc
+/// Читает сообщение из сокета по длине, указанной в заголовке
 fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
 {
   let mut lengthBuffer: [u8; 4] = [0u8; 4];
@@ -384,13 +389,13 @@ fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
   Ok(buffer)
 }
 
-/// todo desc
+/// Сериализует значение в байтовое представление
 pub(super) fn encode<T: Serialize>(value: &T) -> Vec<u8> 
 {
   let config: Configuration = bincode::config::standard();
   bincode::serde::encode_to_vec(value, config).expect("encode failed")
 }
-/// todo desc
+/// Десериализует байтовое представление обратно в значение
 pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 
 {
   let config: Configuration = bincode::config::standard();

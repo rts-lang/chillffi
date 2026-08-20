@@ -1,12 +1,12 @@
 use crate::ffi::value::{Type, Value};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
-/// todo desc
+/// Ошибки, возникающие при работе с загрузкой библиотек и выполнением вызовов
 #[derive(Debug)]
 pub enum FFIError
 {
@@ -34,66 +34,70 @@ impl std::fmt::Display for FFIError
 
 impl<E: std::error::Error + 'static> From<E> for FFIError
 {
-  fn from(err: E) -> Self { FFIError::Other(err.to_string()) }
+  fn from(err: E) -> Self {
+    FFIError::Other(err.to_string())
+  }
 }
 
 // =================================================================================================
 
-/// todo desc
-static NextLibraryID: AtomicU64 = AtomicU64::new(1);
-/// todo desc
-static RegisteredLibraries: OnceLock<Mutex<HashMap<u64, String>>> = OnceLock::new();
+/// Счётчик для выдачи уникальных идентификаторов библиотекам
+static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
+/// Глобальный реестр загруженных библиотек по их идентификаторам
+static RegisteredLibraries: OnceLock<Mutex<HashMap<usize, String>>> = OnceLock::new();
 
-/// todo desc
-fn nextLibraryId() -> u64
+/// Возвращает следующий уникальный идентификатор библиотеки
+fn nextLibraryId() -> usize
 {
   NextLibraryID.fetch_add(1, Ordering::SeqCst)
 }
 
-/// todo desc
-fn getRegistry() -> &'static Mutex<HashMap<u64, String>>
+/// Возвращает общий реестр зарегистрированных библиотек
+fn getRegistry() -> &'static Mutex<HashMap<usize, String>>
 {
   RegisteredLibraries.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// todo desc
-fn registerLibrary(id: u64, path: &str)
+/// Добавляет библиотеку в реестр по её идентификатору
+fn registerLibrary(id: usize, path: &str) -> ()
 {
   let mut registry = getRegistry().lock().unwrap();
   registry.insert(id, path.to_string());
 }
 
-/// todo desc
-fn unregisterLibrary(id: u64)
+/// Удаляет библиотеку из реестра по её идентификатору
+fn unregisterLibrary(id: usize) -> ()
 {
   let mut registry = getRegistry().lock().unwrap();
   registry.remove(&id);
 }
 
-/// todo desc
-fn sendLoadLibrary(_id: u64, _path: &str) -> Result<(), FFIError>
+/// Запрашивает загрузку библиотеки в текущую зиготу
+fn sendLoadLibrary(_id: usize, _path: &str) -> Result<(), FFIError>
 {
   // todo: Отправить ZygoteCommand::LoadLibrary в зиготу для кеширования
-  // Пока что библиотека будет загружаться при каждом вызове через callById
+  //   Пока что библиотека будет загружаться при каждом вызове через callById
+  //   - только резервирует место для будущего кеширования библиотек.
   Ok(())
 }
 
-/// todo desc
-fn sendUnloadLibrary(_id: u64) -> Result<(), FFIError>
+/// Запрашивает выгрузку библиотеки из текущей зиготы
+fn sendUnloadLibrary(_id: usize) -> Result<(), FFIError>
 {
   // todo: Отправить ZygoteCommand::UnloadLibrary в зиготу
+  //   Пока операция является заглушкой до реализации кеширования.
   Ok(())
 }
 
-/// todo desc
+/// Выполняет вызов FFI функции по идентификатору зарегистрированной библиотеки
 fn callById(
-  libraryId: u64,
+  libraryId: usize,
   functionName: &str,
   args: Vec<Value>,
   resultType: Type,
 ) -> Result<Value, FFIError> 
 {
-  let registry: MutexGuard<HashMap<u64, String>> = getRegistry().lock().unwrap();
+  let registry: MutexGuard<HashMap<usize, String>> = getRegistry().lock().unwrap();
   let libraryPath: String = registry.get(&libraryId)
     .ok_or(FFIError::LibraryNotFound)?
     .clone();
@@ -121,25 +125,30 @@ fn callById(
 
 // =================================================================================================
 
+/// Дескриптор загруженной библиотеки с ограничением доступных методов
 #[doc(hidden)]
 pub struct __Library<const Allowed: bool = false>
 {
-  libraryId: u64,
+  // Идентификатор библиотеки внутри менеджера
+  libraryId: usize,
+  // Путь к загруженной библиотеке
   libraryPath: String
 }
 
-// методы, доступные ВСЕГДА (id, и т.д.)
+/// Методы, доступные всегда (id, и т.д.)
 impl<const Allowed: bool> __Library<Allowed>
 {
-  pub fn id(&self) -> u64
+  /// Возвращает идентификатор библиотеки
+  pub fn id(&self) -> usize
   {
     self.libraryId
   }
 }
 
-// методы, доступные ТОЛЬКО внутри ffi!{}
+// Методы, доступные только внутри ffi!{}
 impl __Library<true>
 {
+  /// Выполняет вызов функции из загруженной библиотеки
   pub fn call(
     &self,
     functionName: &str,
@@ -150,6 +159,7 @@ impl __Library<true>
     callById(self.libraryId, functionName, args, resultType)
   }
 
+  /// Выгружает библиотеку и удаляет её из реестра
   pub fn unload(self) -> Result<(), FFIError>
   {
     sendUnloadLibrary(self.libraryId)?;
@@ -157,9 +167,10 @@ impl __Library<true>
     Ok(())
   }
 
+  /// Загружает библиотеку и регистрирует её для дальнейших вызовов
   pub fn load(libraryPath: &str) -> Result<__Library<true>, FFIError>
   {
-    let libraryId: u64 = nextLibraryId();
+    let libraryId: usize = nextLibraryId();
     let ownedPath: String = String::from(libraryPath);
     registerLibrary(libraryId, &ownedPath);
     match sendLoadLibrary(libraryId, &ownedPath)
@@ -170,16 +181,16 @@ impl __Library<true>
   }
 }
 
-// публичный тип снаружи — без load/call
+/// Публичный тип снаружи — без load/call
 pub type Library = __Library<false>;
 
-// скрытый тип для ffi! — с load/call
+/// Скрытый тип для ffi! — с load/call
 #[doc(hidden)]
 pub type __FFILibrary = __Library<true>;
 
 // =================================================================================================
 
-/// todo desc
+/// Способ указания библиотеки для выполнения вызова
 #[derive(Serialize, Deserialize)]
 pub enum CallTarget
 {
@@ -187,7 +198,7 @@ pub enum CallTarget
   LibraryId(u64)
 }
 
-/// todo desc
+/// Описание запроса на выполнение FFI функции
 #[derive(Serialize, Deserialize)]
 pub struct CallRequest
 {
@@ -197,7 +208,7 @@ pub struct CallRequest
   pub resultType: Type
 }
 
-/// todo desc
+/// Команды управления загрузкой библиотек и выполнения вызовов
 #[derive(Serialize, Deserialize)]
 pub enum ZygoteCommand
 {
@@ -206,7 +217,7 @@ pub enum ZygoteCommand
   Call(CallRequest)
 }
 
-/// todo desc
+/// Запрос на загрузку библиотеки и сохранение её идентификатора
 #[derive(Serialize, Deserialize)]
 pub struct LoadLibraryRequest
 {
@@ -214,7 +225,7 @@ pub struct LoadLibraryRequest
   pub libraryPath: String
 }
 
-/// todo desc
+/// Запрос на выгрузку ранее загруженной библиотеки
 #[derive(Serialize, Deserialize)]
 pub struct UnloadLibraryRequest
 {
