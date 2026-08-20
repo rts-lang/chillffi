@@ -54,7 +54,9 @@ fn testAbs() -> ()
   }
 }
 
-/// Проверка повторных вызовов внутри одного ffi!{} (использует кешированный dlopen)
+// =================================================================================================
+
+/// Проверка повторных вызовов внутри одного ffi!{} - использует кешированный dlopen.
 #[test]
 fn testMultipleCallsInSingleFFI() -> ()
 {
@@ -87,6 +89,24 @@ fn testMultipleCallsInSingleFFI() -> ()
       panic!("Expected Value::F64 at index {}", i);
     }
   }
+}
+
+// =================================================================================================
+
+/// Проверка передачи Value::None в качестве аргумента - должна возвращаться ошибка.
+#[test]
+fn testNoneArgumentFails() -> ()
+{
+  setup();
+
+  let result: Result<Value, _> = ffi!{
+    let libm: Library = Library::load("libm.so.6")?;
+    let args: Vec<Value> = vec![Value::None];
+    let res: Value = libm.call("sqrt", args, Type::F64)?;
+    Ok(res)
+  };
+
+  assert!(result.is_err(), "Вызов FFI с Value::None должен завершаться ошибкой");
 }
 
 // =================================================================================================

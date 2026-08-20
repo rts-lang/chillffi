@@ -1,3 +1,4 @@
+use std::env::args;
 use std::any::Any;
 use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};
@@ -279,6 +280,14 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
 /// вызывается один раз на запрос, после чего воркер завершается.
 pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, String>
 {
+  // 1. Проверяем аргументы на наличие Value::None до сборки типов C ABI
+  for (index, arg) in request.args.iter().enumerate() {
+    if matches!(arg, Value::None) {
+      return Err(format!("Cannot pass Value::None as argument at index {}", index));
+    }
+  }
+  
+  //
   let FFIRequest{ libraryPath, functionName, args, resultType: ffiResultType } = request;
 
   // Этот код выполняется в клоне от основной зиготы;
