@@ -22,8 +22,8 @@ fn testSqrt() -> ()
   setup();
 
   let result: Value = ffi!{
-    let libm = Library::load("libm.so.6")?;
-    let args = vec![Value::F64(4.0)];
+    let libm: Library = Library::load("libm.so.6")?;
+    let args: Vec<Value> = vec![Value::F64(4.0)];
     Ok(libm.call("sqrt", args, Type::F64)?)
   }.expect("FFI call failed");
 
@@ -41,8 +41,8 @@ fn testAbs() -> ()
   setup();
   
   let result: Value = ffi! {
-    let libm = Library::load("libm.so.6")?;
-    let args = vec![Value::I32(-5)];
+    let libm: Library = Library::load("libm.so.6")?;
+    let args: Vec<Value> = vec![Value::I32(-5)];
     Ok(libm.call("abs", args, Type::I32)?)
   }.expect("FFI call failed");
 

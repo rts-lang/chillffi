@@ -32,12 +32,9 @@ impl std::fmt::Display for FFIError
   }
 }
 
-impl std::error::Error for FFIError {}
-
-impl From<String> for FFIError {
-  fn from(s: String) -> Self {
-    FFIError::Other(s)
-  }
+impl<E: std::error::Error + 'static> From<E> for FFIError
+{
+  fn from(err: E) -> Self { FFIError::Other(err.to_string()) }
 }
 
 // =================================================================================================
