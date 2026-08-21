@@ -50,20 +50,20 @@ impl TryFrom<&Value> for libffi::middle::Type
   {
     match val 
     {
-      Value::U8(_) => Ok(libffi::middle::Type::u8()),
-      Value::U16(_) => Ok(libffi::middle::Type::u16()),
-      Value::U32(_) => Ok(libffi::middle::Type::u32()),
-      Value::U64(_) => Ok(libffi::middle::Type::u64()),
-      Value::Usize(_) => Ok(libffi::middle::Type::usize()),
-      Value::I8(_) => Ok(libffi::middle::Type::i8()),
-      Value::I16(_) => Ok(libffi::middle::Type::i16()),
-      Value::I32(_) => Ok(libffi::middle::Type::i32()),
-      Value::I64(_) => Ok(libffi::middle::Type::i64()),
-      Value::Isize(_) => Ok(libffi::middle::Type::isize()),
-      Value::F32(_) => Ok(libffi::middle::Type::f32()),
-      Value::F64(_) => Ok(libffi::middle::Type::f64()),
-      Value::Bool(_) => Ok(libffi::middle::Type::u8()),
-      Value::ByteVector(_) => Ok(libffi::middle::Type::pointer()),
+      Value::U8(_) => Ok(Self::u8()),
+      Value::U16(_) => Ok(Self::u16()),
+      Value::U32(_) => Ok(Self::u32()),
+      Value::U64(_) => Ok(Self::u64()),
+      Value::Usize(_) => Ok(Self::usize()),
+      Value::I8(_) => Ok(Self::i8()),
+      Value::I16(_) => Ok(Self::i16()),
+      Value::I32(_) => Ok(Self::i32()),
+      Value::I64(_) => Ok(Self::i64()),
+      Value::Isize(_) => Ok(Self::isize()),
+      Value::F32(_) => Ok(Self::f32()),
+      Value::F64(_) => Ok(Self::f64()),
+      Value::Bool(_) => Ok(Self::u8()),
+      Value::ByteVector(_) => Ok(Self::pointer()),
       Value::None => Err("Cannot pass None as argument".to_string()),
     }
   }
@@ -77,21 +77,21 @@ impl From<&Type> for libffi::middle::Type
   {
     match t 
     {
-      Type::None => libffi::middle::Type::void(),
-      Type::U8 => libffi::middle::Type::u8(),
-      Type::U16 => libffi::middle::Type::u16(),
-      Type::U32 => libffi::middle::Type::u32(),
-      Type::U64 => libffi::middle::Type::u64(),
-      Type::Usize => libffi::middle::Type::usize(),
-      Type::I8 => libffi::middle::Type::i8(),
-      Type::I16 => libffi::middle::Type::i16(),
-      Type::I32 => libffi::middle::Type::i32(),
-      Type::I64 => libffi::middle::Type::i64(),
-      Type::Isize => libffi::middle::Type::isize(),
-      Type::F32 => libffi::middle::Type::f32(),
-      Type::F64 => libffi::middle::Type::f64(),
-      Type::Bool => libffi::middle::Type::u8(),
-      Type::Pointer => libffi::middle::Type::pointer(),
+      Type::None => Self::void(),
+      Type::U8 => Self::u8(),
+      Type::U16 => Self::u16(),
+      Type::U32 => Self::u32(),
+      Type::U64 => Self::u64(),
+      Type::Usize => Self::usize(),
+      Type::I8 => Self::i8(),
+      Type::I16 => Self::i16(),
+      Type::I32 => Self::i32(),
+      Type::I64 => Self::i64(),
+      Type::Isize => Self::isize(),
+      Type::F32 => Self::f32(),
+      Type::F64 => Self::f64(),
+      Type::Bool => Self::u8(),
+      Type::Pointer => Self::pointer(),
     }
   }
 }
@@ -280,7 +280,9 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
 // =================================================================================================
 
 /// Executes inside the forked zygote worker, not the Zygote itself;
+/// 
 /// performs `dlopen` of a specific library and calls the function through libffi;
+/// 
 /// is called once per request, after which the worker terminates.
 pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, String>
 {

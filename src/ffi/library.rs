@@ -271,10 +271,10 @@ mod tests
     setup();
 
     let result: Value = ffi!{
-    let libm: Library = Library::load("libm.so.6")?;
-    let args: Vec<Value> = vec![Value::F64(4.0)];
-    Ok(libm.call("sqrt", args, Type::F64)?)
-  }.expect("FFI call failed");
+      let libm: Library = Library::load("libm.so.6")?;
+      let args: Vec<Value> = vec![Value::F64(4.0)];
+      Ok(libm.call("sqrt", args, Type::F64)?)
+    }.expect("FFI call failed");
 
     if let Value::F64(val) = result {
       assert!((val - 2.0).abs() < f64::EPSILON);
@@ -290,10 +290,10 @@ mod tests
     setup();
 
     let result: Value = ffi!{
-    let libm: Library = Library::load("libm.so.6")?;
-    let args: Vec<Value> = vec![Value::I32(-5)];
-    Ok(libm.call("abs", args, Type::I32)?)
-  }.expect("FFI call failed");
+      let libm: Library = Library::load("libm.so.6")?;
+      let args: Vec<Value> = vec![Value::I32(-5)];
+      Ok(libm.call("abs", args, Type::I32)?)
+    }.expect("FFI call failed");
 
     if let Value::I32(val) = result {
       assert_eq!(val, 5);
@@ -311,20 +311,20 @@ mod tests
     setup();
 
     let results: Vec<Value> = ffi!{
-    let libm: Library = Library::load("libm.so.6")?;
-    let mut outputs: Vec<Value> = Vec::with_capacity(10);
-
-    // 10 consecutive libm.call() calls with a single loaded library
-    for i in 1..=10 
-    {
-      let input: f64 = (i * i) as f64;
-      let args: Vec<Value> = vec![Value::F64(input)];
-      let res: Value = libm.call("sqrt", args, Type::F64)?;
-      outputs.push(res);
-    }
-
-    Ok(outputs)
-  }.expect("Batch FFI call failed");
+      let libm: Library = Library::load("libm.so.6")?;
+      let mut outputs: Vec<Value> = Vec::with_capacity(10);
+  
+      // 10 consecutive libm.call() calls with a single loaded library
+      for i in 1..=10 
+      {
+        let input: f64 = (i * i) as f64;
+        let args: Vec<Value> = vec![Value::F64(input)];
+        let res: Value = libm.call("sqrt", args, Type::F64)?;
+        outputs.push(res);
+      }
+  
+      Ok(outputs)
+    }.expect("Batch FFI call failed");
 
     assert_eq!(results.len(), 10);
 
@@ -348,11 +348,11 @@ mod tests
     setup();
 
     let result: Result<Value, _> = ffi!{
-    let libm: Library = Library::load("libm.so.6")?;
-    let args: Vec<Value> = vec![Value::None];
-    let res: Value = libm.call("sqrt", args, Type::F64)?;
-    Ok(res)
-  };
+      let libm: Library = Library::load("libm.so.6")?;
+      let args: Vec<Value> = vec![Value::None];
+      let res: Value = libm.call("sqrt", args, Type::F64)?;
+      Ok(res)
+    };
 
     assert!(result.is_err(), "FFI call with Value::None should fail");
   }
