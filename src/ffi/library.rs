@@ -175,16 +175,23 @@ impl __Library<true>
     sendRawRequest(FFIRequest::Alloc { length })
   }
 
+  /// Frees memory previously obtained via `alloc` (or a C-side allocator).
+  pub fn free(pointer: usize) -> Result<(), FFIError>
+  {
+    sendRawRequest(FFIRequest::Free { pointer })?;
+    Ok(())
+  }
+
   /// Reads `length` bytes at `pointer` from the clone's memory.
   pub fn readMemory(pointer: usize, length: usize) -> Result<Value, FFIError>
   {
     sendRawRequest(FFIRequest::ReadMemory { pointer, length })
   }
 
-  /// Frees memory previously obtained via `alloc` (or a C-side allocator).
-  pub fn free(pointer: usize) -> Result<(), FFIError>
+  /// Writes data from `Value` into the clone's memory at `pointer`.
+  pub fn writeMemory(pointer: usize, value: Value) -> Result<(), FFIError>
   {
-    sendRawRequest(FFIRequest::Free { pointer })?;
+    sendRawRequest(FFIRequest::WriteMemory { pointer, value })?;
     Ok(())
   }
 }
@@ -363,6 +370,31 @@ mod tests
     }.expect("alloc/readMemory/free roundtrip failed");
 
     assert_eq!(bytes, vec![0xABu8; 8]);
+  }
+
+  /// Checks Alloc/WriteMemory/ReadMemory round-trip.
+  #[test]
+  fn writeMemoryRoundtrip() -> ()
+  {
+    let bytes: Vec<u8> = ffi!{
+      let _libc: Library = Library::load("libc.so.6")?;
+      let payload: Vec<u8> = vec![1, 2, 3, 4, 5];
+
+      let Value::Pointer(addr) = Library::alloc(payload.len())? else { 
+        return Err(FFIError::Other("expected pointer".into())) 
+      };
+
+      Library::writeMemory(addr, Value::RawString(payload.clone()))?;
+
+      let Value::RawString(read_bytes) = Library::readMemory(addr, payload.len())? else { 
+        return Err(FFIError::Other("expected bytes".into())) 
+      };
+      Library::free(addr)?;
+
+      Ok(read_bytes)
+    }.expect("writeMemory roundtrip failed");
+
+    assert_eq!(bytes, vec![1, 2, 3, 4, 5]);
   }
 
   // ===============================================================================================

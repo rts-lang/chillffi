@@ -47,12 +47,16 @@ pub enum FFIRequest
 {
   /// todo desc
   Call { libraryPath: String, functionName: String, args: Vec<Value>, resultType: Type },
+  
   /// todo desc
   Alloc { length: usize },
   /// todo desc
+  Free { pointer: usize },
+  
+  /// todo desc
   ReadMemory { pointer: usize, length: usize },
   /// todo desc
-  Free { pointer: usize }
+  WriteMemory { pointer: usize, value: Value }
 }
 
 /// Response to the request with the execution result or error

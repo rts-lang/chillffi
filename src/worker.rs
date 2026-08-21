@@ -323,16 +323,26 @@ pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -
       Ok(Value::Pointer(ptr as usize))
     },
 
+    FFIRequest::Free { pointer } => unsafe {
+      libc::free(pointer as *mut c_void);
+      Ok(Value::None)
+    }
+
     FFIRequest::ReadMemory { pointer, length } => unsafe {
       if pointer == 0 { return Err(FFIError::BadArgument("null pointer".to_string())); }
       let slice: &[u8] = std::slice::from_raw_parts(pointer as *const u8, length);
       Ok(Value::RawString(slice.to_vec()))
     },
 
-    FFIRequest::Free { pointer } => unsafe {
-      libc::free(pointer as *mut c_void);
+    FFIRequest::WriteMemory { pointer, value } => unsafe {
+      if pointer == 0 { return Err(FFIError::BadArgument("null pointer".to_string())); }
+      let bytes: &[u8] = match &value {
+        Value::RawString(v) | Value::CString(v) => v.as_slice(),
+        _ => return Err(FFIError::BadArgument("expected RawString or CString for WriteMemory".to_string())),
+      };
+      std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer as *mut u8, bytes.len());
       Ok(Value::None)
-    },
+    }
   }
 }
 
