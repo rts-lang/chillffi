@@ -5,18 +5,19 @@ use crate::ffi::value::Value;
 use crate::zygote::FFIRequest;
 // =================================================================================================
 
-/// AllocatedMemory сама по себе нужна при выделении памяти со стороны Rust;
-/// Это RAII-обёртка над памятью, выделенной в куче клона зиготы через `Library::alloc`;
-/// Автоматически отправляет запрос `Free` при выходе из области видимости (`Drop`).
-/// 
-/// Важно: В `Library` есть свои методы для работы с памятью - 
-/// они тоже нужны, но уже когда мы, не являемся создателями участка памяти.
-/// 
-/// Для работы с сырыми адресами, выделенными C-стороной (например, `strdup`),
-/// используйте напрямую методы `Library` напрямую.
-/// 
-/// 'g — время жизни ScopeGuard блока ffi!{}, в котором она создана.
-/// Пока это не 'static — значение физически нельзя вернуть из ffi!{} наружу.
+/// AllocatedMemory itself is needed when allocating memory on the Rust side;
+/// It is an RAII wrapper over memory allocated on the heap of the zygote
+/// clone via `Library::alloc`; Automatically sends a `Free` request 
+/// when going out of scope (`Drop`).
+///
+/// Important: `Library` has its own methods for working with memory -
+/// they are also needed, but only when we are not the creators of the memory region.
+///
+/// To work with raw addresses allocated by the C side (for example, `strdup`),
+/// use the `Library` methods directly.
+///
+/// `'g` is the lifetime of the ScopeGuard block of `ffi!{}` in which it was created.
+/// Until it is `'static` — the value physically cannot be returned from `ffi!{}` outside.
 pub struct AllocatedMemory<'g>
 {
   /// todo desc

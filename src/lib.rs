@@ -58,10 +58,10 @@ fn zygoteEntrypoint() -> ()
 #[macro_export]
 macro_rules! ffi 
 {
-  // Вариант с доступом к Scope. `ffi!(|scope| {})`. 
-  // Может быть любое имя scope - главное без повторений внутри {}.
-  // Scope<'g> заимствует ScopeGuard этого блока, поэтому AllocatedMemory<'g>
-  // не может быть возвращена наружу — это ловит компилятор, а не мы.
+  // Variant with access to Scope. `ffi!(|scope| {})`. 
+  // The scope name can be any name — the important thing is that there are no repetitions inside {}.
+  // Scope<'g> borrows the ScopeGuard of this block, therefore AllocatedMemory<'g>
+  // cannot be returned outside — the compiler catches this, not us.
   (|$scopeName:ident| { $($body:tt)* }) => 
   {
     (|| -> Result<_, $crate::ffi::errors::FFIError> 
@@ -75,7 +75,7 @@ macro_rules! ffi
       // Registering the clone-zygote in the current thread's ZygoteStack
       let _guard = $crate::zygote::ZygoteGuard::enter(zygote);
  
-      // ScopeGuard живёт строго в границах этого блока; $scopeName заимствует его.
+      // ScopeGuard lives strictly within the boundaries of this block; $scopeName borrows it.
       let _scopeGuard = $crate::ffi::scope::ScopeGuard::new();
       let $scopeName = $crate::ffi::scope::Scope::new(&_scopeGuard);
  
@@ -84,8 +84,8 @@ macro_rules! ffi
     })()
   };
  
-  // Вариант без Scope — если alloc() не нужен, ScopeGuard вообще не создаётся.
-  ($($body:tt)*) => 
+  // Variant without Scope, ScopeGuard is not created at all.
+  ($($body:tt)*) =>
   {
     (|| -> Result<_, $crate::ffi::errors::FFIError> 
     {

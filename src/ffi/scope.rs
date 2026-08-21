@@ -9,12 +9,13 @@ use crate::zygote::FFIRequest;
 /// todo desc
 struct HeavyStack
 {
-  // Выделенный стек или арена
+  // Allocated stack or arena
 }
 
-/// Владелец HeavyStack. Заводится макросом ffi!{} один раз на блок (только если
-/// пользователь запросил Scope), живёт и умирает строго с этим блоком.
-/// Не публикуется напрямую — доступ только через Scope<'g>.
+/// Owner of HeavyStack. Created by the ffi!{} macro once per block (only if
+/// the user requested Scope), lives and dies strictly with this block.
+/// 
+/// Is not published directly — access only through Scope<'g>.
 #[doc(hidden)]
 pub struct ScopeGuard
 {
@@ -30,9 +31,10 @@ impl ScopeGuard
   }
 }
 
-/// Ручка на ScopeGuard текущего ffi!{}-блока — заимствует его на 'g.
-/// Именно поэтому AllocatedMemory<'g> не может покинуть блок: ScopeGuard,
-/// которого она заимствует, дропается на границе блока, и это проверяет компилятор.
+/// A handle to the ScopeGuard of the current ffi!{}-block — borrows it for 'g.
+/// 
+/// That is precisely why AllocatedMemory<'g> cannot leave the block: the ScopeGuard,
+/// which it borrows, is dropped at the boundary of the block, and this is checked by the compiler.
 pub struct Scope<'g>
 {
   guard: &'g ScopeGuard,
@@ -52,13 +54,13 @@ impl<'g> Scope<'g>
     unsafe {
       let stack: &mut Option<HeavyStack> = &mut *self.guard.inner.get();
 
-      // Инициализация тяжелого стека происходит ТОЛЬКО при первом вызове alloc()
+      // Initialization of the heavy stack happens only on the first call to alloc()
       if stack.is_none() {
         *stack = Some(HeavyStack{});
       }
     }
 
-    // Выделение памяти через зиготу
+    // Memory allocation through zigot
     match sendRawRequest(FFIRequest::Alloc { length })? {
       Value::Pointer(address) => Ok(AllocatedMemory::new(address, length)),
       _ => Err(FFIError::Other("Alloc did not return a pointer".to_string())),

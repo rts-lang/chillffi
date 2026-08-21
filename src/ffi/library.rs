@@ -53,9 +53,9 @@ fn unregisterLibrary(id: usize) -> ()
 pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
 {
   // Check whether the global zygote in ZygoteState has been initialized
-  if ZygoteState.get().is_none() { 
-    // todo У callById это будет повторная проверка. 
-    //  Но в callById лучше сразу его проверять
+  if ZygoteState.get().is_none() {
+    // todo For callById this will be a repeated check.
+    //  But in callById it is better to check it immediately.
     return Err(FFIError::ZygoteNotInitialized);
   }
   

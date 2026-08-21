@@ -336,7 +336,7 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 
 // =================================================================================================
 
-/// Called from worker — callExternal(). Будет всего одна попытка.
+/// Called from worker — callExternal(); There will be only one attempt.
 pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
 {
   let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
