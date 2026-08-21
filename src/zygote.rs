@@ -16,34 +16,22 @@ use crate::worker::executeFFI;
 // =================================================================================================
 
 /* todo
-    Есть хорошая статья https://kobzol.github.io/rust/2024/01/28/process-spawning-performance-in-rust.html
-    Можно попробовать сделать что-то из этого, для улучшения работы:
-    | Сценарий             | Решение                                |
-    | -------------------- | -------------------------------------- |
-    | десятки процессов    | `Command` нормально                    |
-    | тысячи процессов/сек | проверять glibc/kernel                 |
-    | большой RSS          | избегать fork                          |
-    | HPC                  | использовать worker pool               |
-    | много env            | минимизировать environment             |
-    | Rust async           | `spawn_blocking` или отдельные workers |
-    Возможно есть более лучшие способы.
-
-   todo
-    Кроме того есть еще несколько направлений:
-    1. Парная работа. Идея простая - есть 1 зигота для клонирования и 2 её клона.
-       Собственно пока один работает - другая готова принять удар следом за ней. 
-       Это должно хорошо снижать нагрузку в задачах, когда FFI идут друг за другом.
-    2. Динамический прогрев зигот. Идея тоже простая - в зависимости от нагрузки 
-       мы добавляем или уменьшаем количество процессов.
-       Это можно сделать разными алгоритмами. 
-       Это уже не обязательная и экспериментальная область.
-    3. Разделение Runtime на 2 части - где зигота как процесс изначально даже 
-       не будет видеть основной Runtime. Что-то вроде 2 программы в одной. 
-       Но я не хочу делать 2 программы - чтобы файл был один. 
-       Это можно реализовать разными способами. Идея простая - 
-       даже если зигота не использует инструкции Runtime - 
-       то она все равно объявляет их и они существуют внутри, 
-       хотя никогда не будут использованы. Это тоже экспериментальное направление.
+    There are several possible directions for improvements and experiments:
+    1. Pair work. The idea is simple - there is 1 zygote for cloning and 2 of its clones.
+       Essentially, this is a pool of cloned zygotes. So there would be 3 of them in total.
+       Basically, while one is working, another one is ready to take the hit right after it.
+       This should significantly reduce the load in tasks where FFIs go one after another.
+    2. Dynamic zygote warming. The idea is also simple - depending on the load,
+       we increase or decrease the number of cloned zygotes.
+       This can be done using different algorithms.
+    3. Splitting the Runtime into 2 parts - where the main zygote as a process initially
+       will not even see the main Runtime. Something like 2 programs inside one.
+       But making 2 programs is not a great approach - there needs to be a single file.
+       This can be implemented in different ways. The idea is simple -
+       even if the main zygote does not use Runtime instructions,
+       it still declares them and they exist inside,
+       although they will never be used.
+       In some way, exec() and ctor solve this, but this solution fully solves it.
 */
 
 // =================================================================================================
@@ -224,7 +212,9 @@ pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
   let (runtimeSocket, zygoteSocket): (UnixStream, UnixStream) = UnixStream::pair()?;
   
   //
-  let currentExe: PathBuf = env::current_exe()?; // todo Может failed, если путь к исполняемому файлу слишком длинный или нет прав?
+  let currentExe: PathBuf = env::current_exe()?;
+  // todo Might fail if the path to the executable file 
+  //  is too long or there are no permissions?
   let process: Child = Command::new(currentExe)
     .arg(ZygoteFlag)
     .stdin(Stdio::from(OwnedFd::from(zygoteSocket)))

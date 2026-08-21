@@ -8,9 +8,13 @@ use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
-/// Errors occurring during library loading and call execution
-/// 
-/// todo Тут нет описания каждой ошибки, что может быть полезно.
+/// Errors occurring during library loading and call execution.
+///
+/// todo There is no description of each error in the form 
+///   of a comment here, which could be useful.
+///
+/// todo There are no more detailed types with {} 
+///   for detailed debugging here.
 #[derive(Debug)]
 pub enum FFIError
 {
@@ -136,7 +140,7 @@ pub struct __Library<const Allowed: bool = false>
 {
   /// Library identifier
   libraryId: usize,
-  /// Путь к загруженной библиотеке
+  /// Path to the loaded library
   libraryPath: String
 }
 

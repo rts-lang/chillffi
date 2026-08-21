@@ -14,14 +14,14 @@ pub enum Value
   U16(u16),
   U32(u32),
   U64(u64),
-  Usize(usize), // todo Должно быть тут?
+  Usize(usize),
   
   //
   I8(i8),
   I16(i16),
   I32(i32),
   I64(i64),
-  Isize(isize), // todo Должно быть тут?
+  Isize(isize),
   
   //
   F32(f32),
@@ -29,15 +29,15 @@ pub enum Value
   
   //
   Bool(bool),
-  
-  /// В C коде ожидали бы `uint8_t *data`; 
-  /// Но без len эти байты бесполезны и `size_t len` необходим.
+
+  /// In C code, one would expect `uint8_t *data`;
+  /// But without `len` these bytes are useless and `size_t len` is necessary.
   RawString(Vec<u8>),
-  
-  /// В C коде ожидали бы `const char *str`; `\0` terminated.
+
+  /// In C code, one would expect `const char *str`; `\0` terminated.
   CString(Vec<u8>),
-  
-  /// В C коде ожидали бы `const char *str, size_t len`
+
+  /// In C code, one would expect `const char *str, size_t len`.
   String(Vec<u8>)
 }
 
@@ -58,14 +58,14 @@ pub enum Type
   U16,
   U32,
   U64,
-  Usize, // todo Должно быть тут?
+  Usize,
   
   //
   I8,
   I16,
   I32,
   I64,
-  Isize, // todo Должно быть тут?
+  Isize,
   
   //
   F32,

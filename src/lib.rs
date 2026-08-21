@@ -32,7 +32,7 @@ fn zygoteEntrypoint() -> ()
     }
   }
 
-  // Делаем это один раз, чтобы запустить основную зиготу
+  // Do this once to start the main zygote
   initZygote().expect("Failed to setup zygote");
 }
 

@@ -125,18 +125,14 @@ fn prepareFFIArgs<'a>(
       Value::F32(v) => storage.push(Box::new(*v)),
       Value::F64(v) => storage.push(Box::new(*v)),
       Value::Bool(b) => storage.push(Box::new(if *b { 1u8 } else { 0u8 })),
-      Value::RawString(v) => 
-      { // For a byte vector, pass a pointer to the data;
-        // Important: If the C code needs it for a long time, it is its responsibility.
-        // The pointer will be removed by us because it is temporary 
-        // + due to the zygote process operation.
+      Value::RawString(v) => {
         let mut vec: Vec<u8> = v.clone();
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
         storage.push(Box::new((vec, pointer)));
       }
       Value::CString(v) => {
         let mut vec: Vec<u8> = v.clone();
-        if !vec.ends_with(&[0]) { vec.push(0); } // Гарантия \0
+        if !vec.ends_with(&[0]) { vec.push(0); } // Guarantee \0
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
         storage.push(Box::new((vec, pointer)));
       }
@@ -144,7 +140,7 @@ fn prepareFFIArgs<'a>(
         let mut vec: Vec<u8> = v.clone();
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
         let len: usize = vec.len();
-        storage.push(Box::new((vec, pointer, len))); // Сохранение длины
+        storage.push(Box::new((vec, pointer, len))); // Saving the length
       }
       Value::None => return Err("Cannot pass None".to_string()),
     }
