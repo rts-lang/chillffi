@@ -60,7 +60,7 @@ macro_rules! ffi
 {
   ($($body:tt)*) => 
   {
-    (|| -> Result<_, $crate::ffi::library::FFIError> 
+    (|| -> Result<_, $crate::ffi::errors::FFIError> 
     {
       use $crate::ffi::library::__FFILibrary as Library;
       use $crate::zygote::ClonedZygote;

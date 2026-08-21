@@ -1,4 +1,4 @@
-use crate::ffi::library::FFIError;
+use crate::ffi::errors::FFIError;
 use std::any::Any;
 use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};

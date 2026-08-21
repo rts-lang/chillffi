@@ -1,5 +1,4 @@
-use serde::Deserialize;
-use serde::Serialize;
+use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
 use std::sync::MutexGuard;
 use crate::zygote::ClonedZygote;
@@ -8,58 +7,6 @@ use crate::ffi::value::{Type, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
-// =================================================================================================
-
-/// Errors occurring during library loading and call execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FFIError
-{
-  /// Глобальный зигот в ZygoteState не был инициализирован.
-  ZygoteNotInitialized,
-  /// Вызов выполняется вне контекста макроса ffi!{}.
-  NoActiveZygoteScope,
-  /// Сбой IPC-связи с процессом-зиготом.
-  ZygoteCommunicationFailed(String),
-
-  /// Не удалось динамически загрузить библиотеку (.so / .dll).
-  LibraryLoadFailed { libraryPath: String, message: String },
-  /// Запрошенная библиотека не найдена в реестре по ее ID.
-  LibraryNotFound { libraryPath: String },
-
-  /// Запрошенная функция/символ не найдена в загруженной библиотеке.
-  SymbolNotFound { functionName: String },
-  /// Передан невалидный аргумент (например, Value::None).
-  BadArgument(String),
-  /// Запрошен неподдерживаемый тип возвращаемого значения (например, Type::Pointer).
-  BadResultType(String),
-
-  /// Выполнение FFI-функции завершилось ошибкой.
-  CallFailed { functionName: String, message: String },
-
-  /// Ошибка сериализации данных при IPC.
-  EncodeFailed(String),
-  /// Ошибка десериализации данных при IPC.
-  DecodeFailed(String),
-
-  /// Прочие неклассифицированные ошибки.
-  Other(String)
-}
-
-impl std::fmt::Display for FFIError
-{
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-  {
-    write!(f, "{:?}", self)
-  }
-}
-
-impl<E: std::error::Error + 'static> From<E> for FFIError
-{
-  fn from(err: E) -> Self {
-    Self::Other(err.to_string())
-  }
-}
-
 // =================================================================================================
 
 /// Counter for assigning unique identifiers to libraries

@@ -1,4 +1,4 @@
-use crate::ffi::library::FFIError;
+use crate::ffi::errors::FFIError;
 use std::cell::RefCell;
 use std::env;
 use std::io::{self, Read, Write};
