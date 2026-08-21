@@ -10,37 +10,37 @@ use std::sync::{Mutex, OnceLock};
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
-/// Counter for assigning unique identifiers to libraries
+/// Counter for assigning unique identifiers to libraries.
 static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
-/// Global registry of loaded libraries by their identifiers
+/// Global registry of loaded libraries by their identifiers.
 static RegisteredLibraries: OnceLock<Mutex<FxHashMap<usize, String>>> = OnceLock::new();
 
-/// Returns the next unique library identifier
+/// Returns the next unique library identifier.
 fn nextLibraryId() -> usize
 {
   NextLibraryID.fetch_add(1, Ordering::SeqCst)
 }
 
-/// Returns the global registry of registered libraries
+/// Returns the global registry of registered libraries.
 fn getRegistry() -> &'static Mutex<FxHashMap<usize, String>>
 {
   RegisteredLibraries.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
-/// todo desc
+/// Acquires the lock on the global library registry, returning the mutex guard.
 fn lockRegistry() -> MutexGuard<'static, FxHashMap<usize, String>>
 {
   getRegistry().lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Adds a library to the registry by its identifier
+/// Adds a library to the registry by its identifier.
 fn registerLibrary(id: usize, path: &str) -> ()
 {
   let mut registry: MutexGuard<FxHashMap<usize, String>> = lockRegistry();
   registry.insert(id, path.to_string());
 }
 
-/// Removes a library from the registry by its identifier
+/// Removes a library from the registry by its identifier.
 fn unregisterLibrary(id: usize) -> ()
 {
   let mut registry: MutexGuard<FxHashMap<usize, String>> = lockRegistry();
@@ -49,7 +49,7 @@ fn unregisterLibrary(id: usize) -> ()
 
 // =================================================================================================
 
-// todo desc
+/// Sends a raw FFI request to the active zygote clone in the current thread's stack.
 pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
 {
   // Check whether the global zygote in ZygoteState has been initialized
@@ -77,8 +77,7 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
   })
 }
 
-/// Performs an FFI function call 
-/// by the identifier of the registered library
+/// Performs an FFI function call by the identifier of the registered library.
 fn callById(
   libraryId: usize,
   libraryPath: &str,
@@ -106,7 +105,7 @@ fn callById(
 
 // =================================================================================================
 
-/// Handle of the loaded library with a restriction on available methods
+/// Handle of the loaded library with a restriction on available methods.
 #[doc(hidden)]
 pub struct __Library<const Allowed: bool = false>
 {
@@ -137,7 +136,7 @@ impl<const Allowed: bool> Drop for __Library<Allowed>
 // Methods available only inside ffi!{}
 impl __Library<true>
 {
-  /// Executes a function call from the loaded library
+  /// Executes a function call from the loaded library.
   pub fn call(
     &self,
     functionName: &str,
@@ -148,7 +147,7 @@ impl __Library<true>
     callById(self.libraryId, &self.libraryPath, functionName, args, resultType)
   }
 
-  /// Loads the library and registers it for further calls
+  /// Loads the library and registers it for further calls.
   pub fn load(libraryPath: &str) -> Result<Self, FFIError>
   {
     let libraryId: usize = nextLibraryId();
@@ -170,7 +169,7 @@ impl __Library<true>
   }
 }
 
-/// Public type from the outside
+/// Public type from the outside.
 pub type Library = __Library<false>;
 
 /// Hidden type for ffi!

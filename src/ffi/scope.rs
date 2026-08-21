@@ -6,7 +6,7 @@ use crate::ffi::value::Value;
 use crate::zygote::FFIRequest;
 // =================================================================================================
 
-/// todo desc
+/// Heavy stack or arena for temporary allocations within an ffi!{} scope.
 struct HeavyStack
 {
   // Allocated stack or arena
@@ -90,7 +90,7 @@ impl<'g> Scope<'g>
 
 // =================================================================================================
 
-#[cfg(test)]#[cfg(test)]
+#[cfg(test)]
 mod tests
 {
   use crate::ffi;

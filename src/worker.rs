@@ -41,7 +41,7 @@ pub fn callExternal(
 
 // =================================================================================================
 
-// todo desc
+/// Maps a Value variant to its corresponding libffi C ABI type(s).
 fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
 {
   match val
@@ -300,7 +300,7 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
   }
 }
 
-// todo desc
+/// Safely downcasts a boxed storage entry to a concrete reference type.
 fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 {
   entry.downcast_ref::<T>()
@@ -309,7 +309,7 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 
 // =================================================================================================
 
-// todo desc
+/// Dispatches an FFI request inside the zygote clone to the appropriate handler.
 pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
 {
   match request

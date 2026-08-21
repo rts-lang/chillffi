@@ -20,17 +20,17 @@ use crate::zygote::FFIRequest;
 /// Until it is `'static` — the value physically cannot be returned from `ffi!{}` outside.
 pub struct AllocatedMemory<'g>
 {
-  /// todo desc
+  /// Raw address of the allocated memory block in the zygote heap.
   address: usize,
-  /// todo desc
+  /// Size of the allocated memory block in bytes.
   length: usize,
-  /// todo desc
+  /// Phantom lifetime marker tying the allocation to the ffi!{} scope.
   _scope: PhantomData<&'g ()>
 }
 
 impl<'g> AllocatedMemory<'g>
 {
-  /// todo desc
+  /// Creates a new wrapper for a raw zygote allocation.
   pub(super) fn new(address: usize, length: usize) -> Self 
   {
     Self {
@@ -40,22 +40,22 @@ impl<'g> AllocatedMemory<'g>
     }
   }
 
-  /// todo desc
+  /// Returns the raw memory address of the allocation.
   pub fn address(&self) -> usize { self.address }
-  /// todo desc
+  /// Returns the size of the allocated memory block in bytes.
   pub fn length(&self) -> usize { self.length }
 
-  /// todo desc
+  /// Wraps the address into a Value::Pointer for FFI calls.
   pub fn asPointer(&self) -> Value {
     Value::Pointer(self.address)
   }
 
-  /// todo desc
+  /// Reads the entire allocated memory block from the zygote.
   pub fn read(&self) -> Result<Value, FFIError> {
     sendRawRequest(FFIRequest::ReadMemory { pointer: self.address, length: self.length })
   }
 
-  /// todo desc
+  /// Writes a value into the allocated memory block in the zygote.
   pub fn write(&self, value: Value) -> Result<(), FFIError> {
     sendRawRequest(FFIRequest::WriteMemory { pointer: self.address, value })?;
     Ok(())
@@ -64,7 +64,7 @@ impl<'g> AllocatedMemory<'g>
 
 impl<'g> Drop for AllocatedMemory<'g>
 {
-  /// todo desc
+  /// Automatically frees the allocated memory in the zygote on scope exit.
   fn drop(&mut self) 
   {
     if self.address != 0 {

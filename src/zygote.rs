@@ -45,17 +45,17 @@ pub const ZygoteFlag: &str = "__zygote";
 #[derive(Serialize, Deserialize)]
 pub enum FFIRequest
 {
-  /// todo desc
+  /// Calls a function from a dynamic library with the given arguments and expected return type.
   Call { libraryPath: String, functionName: String, args: Vec<Value>, resultType: Type },
-  
-  /// todo desc
+
+  /// Allocates a block of memory of the specified length in the zygote address space.
   Alloc { length: usize },
-  /// todo desc
+  /// Frees a previously allocated memory block by its pointer.
   Free { pointer: usize },
-  
-  /// todo desc
+
+  /// Reads a raw memory block of the given length starting at the specified pointer.
   ReadMemory { pointer: usize, length: usize },
-  /// todo desc
+  /// Writes a value to the specified address in the zygote memory.
   WriteMemory { pointer: usize, value: Value }
 }
 
@@ -63,9 +63,9 @@ pub enum FFIRequest
 #[derive(Serialize, Deserialize)]
 pub enum FFIResponse
 {
-  /// todo desc
+  /// Successful execution with the returned value.
   Ok(Value),
-  /// todo desc
+  /// Execution failed with the corresponding error.
   Err(FFIError)
 }
 
