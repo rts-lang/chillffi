@@ -168,26 +168,6 @@ impl __Library<true>
     // which will call unregisterLibrary() itself.
     Ok(())
   }
-
-  /// Frees memory previously obtained via `alloc` (or a C-side allocator).
-  pub fn free(pointer: usize) -> Result<(), FFIError>
-  {
-    sendRawRequest(FFIRequest::Free { pointer })?;
-    Ok(())
-  }
-
-  /// Reads `length` bytes at `pointer` from the clone's memory.
-  pub fn readMemory(pointer: usize, length: usize) -> Result<Value, FFIError>
-  {
-    sendRawRequest(FFIRequest::ReadMemory { pointer, length })
-  }
-
-  /// Writes data from `Value` into the clone's memory at `pointer`.
-  pub fn writeMemory(pointer: usize, value: Value) -> Result<(), FFIError>
-  {
-    sendRawRequest(FFIRequest::WriteMemory { pointer, value })?;
-    Ok(())
-  }
 }
 
 /// Public type from the outside
@@ -203,8 +183,6 @@ pub type __FFILibrary = __Library<true>;
 mod tests
 {
   use crate::ffi;
-  use crate::ffi::allocatedMemory::AllocatedMemory;
-  use crate::ffi::errors::FFIError;
   use crate::ffi::library::lockRegistry;
   use crate::ffi::value::Value;
   use crate::ffi::value::Type;
@@ -338,48 +316,6 @@ mod tests
     };
 
     assert!(result.is_err(), "FFI call with Value::None should fail");
-  }
-
-  // ===============================================================================================
-
-  /// Checks Alloc/ReadMemory/Free round-trip via memset.
-  #[test]
-  fn allocReadMemoryRoundtrip() -> ()
-  {
-    let bytes: Vec<u8> = ffi!(|scope| {
-      let mem: AllocatedMemory = scope.alloc(8)?;
-
-      let libc: Library = Library::load("libc.so.6")?;
-      // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
-      libc.call("memset", vec![mem.asPointer(), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
-
-      let Value::RawString(bytes) = mem.read()? else { 
-        return Err(FFIError::Other("expected bytes".into())) 
-      };
-
-      Ok(bytes)
-    }).expect("alloc/readMemory/free roundtrip failed");
-
-    assert_eq!(bytes, vec![0xABu8; 8]);
-  }
-
-  /// Checks Alloc/WriteMemory/ReadMemory round-trip.
-  #[test]
-  fn allocWriteMemoryRoundtrip() -> ()
-  {
-    let bytes: Vec<u8> = ffi!(|scope| {
-      let payload: Vec<u8> = vec![1, 2, 3, 4, 5];
-
-      let mem: AllocatedMemory = scope.alloc(payload.len())?;
-      mem.write(Value::RawString(payload))?;
-
-      let Value::RawString(readBytes) = mem.read()? else { 
-        return Err(FFIError::Other("expected bytes".into())) 
-      };
-      Ok(readBytes)
-    }).expect("writeMemory roundtrip failed");
-
-    assert_eq!(bytes, vec![1, 2, 3, 4, 5]);
   }
 
   // ===============================================================================================

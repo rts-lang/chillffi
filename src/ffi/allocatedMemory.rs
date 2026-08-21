@@ -72,4 +72,81 @@ impl<'g> Drop for AllocatedMemory<'g>
   }
 }
 
+
+// =================================================================================================
+
+#[cfg(test)]
+mod tests
+{
+  use crate::ffi;
+  use crate::ffi::allocatedMemory::AllocatedMemory;
+  use crate::ffi::errors::FFIError;
+  use crate::ffi::value::Value;
+  use crate::ffi::value::Type;
+  // ===============================================================================================
+
+  /// Checks reading memory via AllocatedMemory::read.
+  #[test]
+  fn read() -> ()
+  {
+    let bytes: Vec<u8> = ffi!(|scope| {
+      let mem: AllocatedMemory = scope.alloc(8)?;
+
+      let libc: Library = Library::load("libc.so.6")?;
+      // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
+      libc.call("memset", vec![mem.asPointer(), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
+
+      let Value::RawString(bytes) = mem.read()? else { 
+        return Err(FFIError::Other("expected bytes".into())) 
+      };
+
+      Ok(bytes)
+    }).expect("alloc/readMemory/free roundtrip failed");
+
+    assert_eq!(bytes, vec![0xABu8; 8]);
+  }
+  
+  /// Checks writing memory via AllocatedMemory::write.
+  #[test]
+  fn write() -> ()
+  {
+    let len: Value = ffi!(|scope| {
+      let mem: AllocatedMemory = scope.alloc(32)?;
+
+      mem.write(Value::CString(b"hello".to_vec()))?;
+
+      let libc: Library = Library::load("libc.so.6")?;
+      let result: Value = libc.call("strlen", vec![mem.asPointer()], Type::Usize)?;
+
+      Ok(result)
+    }).expect("AllocatedMemory::write failed");
+
+    assert!(matches!(len, Value::Usize(5)));
+  }
+
+  /// Checks automatic deallocation via Drop when AllocatedMemory leaves scope.
+  #[test]
+  fn drop() -> ()
+  {
+    let (addr1, addr2): (usize, usize) = ffi!(|scope| {
+      let addr1: usize = {
+        let mem: AllocatedMemory = scope.alloc(16)?;
+        let a: usize = mem.address();
+        // mem is dropped here, sending Free
+        a
+      };
+
+      let mem2: AllocatedMemory = scope.alloc(16)?;
+      let addr2: usize = mem2.address();
+
+      Ok((addr1, addr2))
+    }).expect("AllocatedMemory::drop failed");
+
+    // If Drop freed the first allocation, malloc may reuse the same address
+    assert_eq!(addr1, addr2);
+  }
+
+  // ===============================================================================================
+}
+
 // =================================================================================================
