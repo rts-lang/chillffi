@@ -1,3 +1,4 @@
+use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::value::{Type, Value};
 use chillffi::ffi::errors::FFIError;
 use chillffi::ffi;
@@ -12,16 +13,12 @@ fn println(text: &str) -> Result<(), FFIError>
     let mut bytes: Vec<u8> = text.as_bytes().to_vec();
     bytes.push(0);
 
-    let Value::Pointer(addr) = Library::alloc(bytes.len())? else {
-      return Err(FFIError::Other("expected pointer".into()))
-    };
-
-    Library::writeMemory(addr, Value::RawString(bytes))?;
+    let mem: AllocatedMemory = Library::alloc(bytes.len())?;
+    mem.write(Value::RawString(bytes))?;
 
     // puts(const char *s) automatically appends a newline
-    libc.call("puts", vec![Value::Pointer(addr)], Type::I32)?;
-
-    Library::free(addr)?;
+    libc.call("puts", vec![mem.asPointer()], Type::I32)?;
+    
     Ok(())
   }
 }

@@ -1,3 +1,4 @@
+use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::value::{Type, Value};
 use chillffi::ffi::errors::FFIError;
 use chillffi::ffi;
@@ -11,16 +12,14 @@ fn main() -> ()
     let libc: Library = Library::load("libc.so.6")?;
 
     // struct timespec { time_t tv_sec; long tv_nsec; } — 16 bytes on x86_64 Linux
-    let Value::Pointer(addr) = Library::alloc(16)? else { 
-      return Err(FFIError::Other("expected pointer".into())) 
-    };
+    let mem: AllocatedMemory = Library::alloc(16)?;
 
-    libc.call("clock_gettime", vec![Value::I32(0 /* CLOCK_REALTIME */), Value::Pointer(addr)], Type::I32)?;
+    libc.call("clock_gettime", vec![Value::I32(0 /* CLOCK_REALTIME */), mem.asPointer()], Type::I32)?;
 
-    let Value::RawString(bytes) = Library::readMemory(addr, 16)? else { 
+    let Value::RawString(bytes) = mem.read()? else { 
       return Err(FFIError::Other("expected bytes".into())) 
     };
-    Library::free(addr)?;
+    drop(mem);
 
     let secs: i64 = i64::from_ne_bytes(bytes[0..8].try_into().unwrap());
     let nanos: i64 = i64::from_ne_bytes(bytes[8..16].try_into().unwrap());

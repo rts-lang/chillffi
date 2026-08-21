@@ -1,3 +1,4 @@
+use crate::ffi::allocatedMemory::AllocatedMemory;
 use std::cell::RefMut;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
@@ -50,7 +51,7 @@ fn unregisterLibrary(id: usize) -> ()
 // =================================================================================================
 
 // todo desc
-fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
+pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
 {
   // Check whether the global zygote in ZygoteState has been initialized
   if ZygoteState.get().is_none() { 
@@ -170,9 +171,12 @@ impl __Library<true>
   }
 
   /// Allocates `length` bytes in the clone's heap.
-  pub fn alloc(length: usize) -> Result<Value, FFIError>
+  pub fn alloc(length: usize) -> Result<AllocatedMemory, FFIError>
   {
-    sendRawRequest(FFIRequest::Alloc { length })
+    match sendRawRequest(FFIRequest::Alloc { length })? {
+      Value::Pointer(address) => Ok(AllocatedMemory::new(address, length)),
+      _ => Err(FFIError::Other("Alloc did not return a pointer".to_string())),
+    }
   }
 
   /// Frees memory previously obtained via `alloc` (or a C-side allocator).
@@ -209,6 +213,7 @@ pub type __FFILibrary = __Library<true>;
 mod tests
 {
   use crate::ffi;
+  use crate::ffi::allocatedMemory::AllocatedMemory;
   use crate::ffi::errors::FFIError;
   use crate::ffi::library::lockRegistry;
   use crate::ffi::value::Value;
@@ -354,17 +359,14 @@ mod tests
     let bytes: Vec<u8> = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
 
-      let Value::Pointer(addr) = Library::alloc(8)? else { 
-        return Err(FFIError::Other("expected pointer".into())) 
-      };
+      let mem: AllocatedMemory = Library::alloc(8)?;
 
       // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
-      libc.call("memset", vec![Value::Pointer(addr), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
+      libc.call("memset", vec![mem.asPointer(), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
 
-      let Value::RawString(bytes) = Library::readMemory(addr, 8)? else { 
+      let Value::RawString(bytes) = mem.read()? else { 
         return Err(FFIError::Other("expected bytes".into())) 
       };
-      Library::free(addr)?;
 
       Ok(bytes)
     }.expect("alloc/readMemory/free roundtrip failed");
@@ -374,24 +376,19 @@ mod tests
 
   /// Checks Alloc/WriteMemory/ReadMemory round-trip.
   #[test]
-  fn writeMemoryRoundtrip() -> ()
+  fn allocWriteMemoryRoundtrip() -> ()
   {
     let bytes: Vec<u8> = ffi!{
       let _libc: Library = Library::load("libc.so.6")?;
       let payload: Vec<u8> = vec![1, 2, 3, 4, 5];
 
-      let Value::Pointer(addr) = Library::alloc(payload.len())? else { 
-        return Err(FFIError::Other("expected pointer".into())) 
-      };
+      let mem: AllocatedMemory = Library::alloc(payload.len())?;
+      mem.write(Value::RawString(payload))?;
 
-      Library::writeMemory(addr, Value::RawString(payload.clone()))?;
-
-      let Value::RawString(read_bytes) = Library::readMemory(addr, payload.len())? else { 
+      let Value::RawString(readBytes) = mem.read()? else { 
         return Err(FFIError::Other("expected bytes".into())) 
       };
-      Library::free(addr)?;
-
-      Ok(read_bytes)
+      Ok(readBytes)
     }.expect("writeMemory roundtrip failed");
 
     assert_eq!(bytes, vec![1, 2, 3, 4, 5]);
