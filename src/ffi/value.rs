@@ -83,7 +83,6 @@ pub enum Type
 #[cfg(test)]
 mod tests
 {
-  use crate::tests::setup;
   use crate::ffi;
   use crate::ffi::value::{Type, Value};
   // ===============================================================================================
@@ -92,21 +91,19 @@ mod tests
   #[test]
   fn signedIntegers() -> ()
   {
-    setup();
-
     ffi!{
       let libc: Library = Library::load("libc.so.6")?;
 
       // I8 & I16
-      let resI8 = libc.call("abs", vec![Value::I8(-5)], Type::I8)?;
-      let resI16 = libc.call("abs", vec![Value::I16(-15)], Type::I16)?;
+      let resI8: Value = libc.call("abs", vec![Value::I8(-5)], Type::I8)?;
+      let resI16: Value = libc.call("abs", vec![Value::I16(-15)], Type::I16)?;
       assert!(matches!(resI8, Value::I8(5)));
       assert!(matches!(resI16, Value::I16(15)));
 
       // I32, I64 & Isize
-      let resI32 = libc.call("abs", vec![Value::I32(-42)], Type::I32)?;
-      let resI64 = libc.call("labs", vec![Value::I64(-100000)], Type::I64)?;
-      let resIsize = libc.call("labs", vec![Value::Isize(-500)], Type::Isize)?;
+      let resI32: Value = libc.call("abs", vec![Value::I32(-42)], Type::I32)?;
+      let resI64: Value = libc.call("labs", vec![Value::I64(-100000)], Type::I64)?;
+      let resIsize: Value = libc.call("labs", vec![Value::Isize(-500)], Type::Isize)?;
       assert!(matches!(resI32, Value::I32(42)));
       assert!(matches!(resI64, Value::I64(100000)));
       assert!(matches!(resIsize, Value::Isize(500)));
@@ -119,22 +116,20 @@ mod tests
   #[test]
   fn unsignedIntegers() -> ()
   {
-    setup();
-
     ffi!{
       let libc: Library = Library::load("libc.so.6")?;
 
       // U8, U16, U32
-      let resU8 = libc.call("strnlen", vec![Value::CString(b"a".to_vec()), Value::U8(10)], Type::U8)?;
-      let resU16 = libc.call("strnlen", vec![Value::CString(b"ab".to_vec()), Value::U16(10)], Type::U16)?;
-      let resU32 = libc.call("strnlen", vec![Value::CString(b"abc".to_vec()), Value::U32(10)], Type::U32)?;
+      let resU8: Value = libc.call("strnlen", vec![Value::CString(b"a".to_vec()), Value::U8(10)], Type::U8)?;
+      let resU16: Value = libc.call("strnlen", vec![Value::CString(b"ab".to_vec()), Value::U16(10)], Type::U16)?;
+      let resU32: Value = libc.call("strnlen", vec![Value::CString(b"abc".to_vec()), Value::U32(10)], Type::U32)?;
       assert!(matches!(resU8, Value::U8(1)));
       assert!(matches!(resU16, Value::U16(2)));
       assert!(matches!(resU32, Value::U32(3)));
 
       // U64 & Usize
-      let resU64 = libc.call("strnlen", vec![Value::CString(b"abcd".to_vec()), Value::U64(10)], Type::U64)?;
-      let resUsize = libc.call("strnlen", vec![Value::CString(b"abcde".to_vec()), Value::Usize(10)], Type::Usize)?;
+      let resU64: Value = libc.call("strnlen", vec![Value::CString(b"abcd".to_vec()), Value::U64(10)], Type::U64)?;
+      let resUsize: Value = libc.call("strnlen", vec![Value::CString(b"abcde".to_vec()), Value::Usize(10)], Type::Usize)?;
       assert!(matches!(resU64, Value::U64(4)));
       assert!(matches!(resUsize, Value::Usize(5)));
 
@@ -146,8 +141,6 @@ mod tests
   #[test]
   fn floatTypes() -> ()
   {
-    setup();
-
     let resultF32: Value = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let args: Vec<Value> = vec![Value::F32(16.0)];
@@ -177,8 +170,6 @@ mod tests
   #[test]
   fn boolAndUnsignedTypes() -> ()
   {
-    setup();
-
     let resultBool: Value = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
       let args: Vec<Value> = vec![Value::Bool(true)];
@@ -210,8 +201,6 @@ mod tests
   #[test]
   fn cString() -> ()
   {
-    setup();
-
     let result: Value = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
       let args: Vec<Value> = vec![Value::CString(b"hello".to_vec())];
@@ -230,8 +219,6 @@ mod tests
   #[test]
   fn string() -> ()
   {
-    setup();
-
     let result: Value = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
       let args: Vec<Value> = vec![Value::String(b"hello world".to_vec())];
@@ -249,8 +236,6 @@ mod tests
   #[test]
   fn rawString() -> ()
   {
-    setup();
-
     let result: Value = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
       let args: Vec<Value> = vec![Value::RawString(b"12345\0".to_vec())];

@@ -206,7 +206,6 @@ pub type __FFILibrary = __Library<true>;
 #[cfg(test)]
 mod tests
 {
-  use crate::tests::setup;
   use crate::ffi;
   use crate::ffi::library::getRegistry;
   use crate::ffi::value::Value;
@@ -217,8 +216,6 @@ mod tests
   #[test]
   fn libraryDrop() -> ()
   {
-    setup();
-
     let id: usize = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let id: usize = libm.id();
@@ -234,8 +231,6 @@ mod tests
   #[test]
   fn libraryAutoDrop() -> ()
   {
-    setup();
-
     let id: usize = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let id: usize = libm.id();
@@ -250,8 +245,6 @@ mod tests
   #[test]
   fn libraryUnload() -> ()
   {
-    setup();
-
     let id: usize = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let id: usize = libm.id();
@@ -268,8 +261,6 @@ mod tests
   #[test]
   fn sqrt() -> ()
   {
-    setup();
-
     let result: Value = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let args: Vec<Value> = vec![Value::F64(4.0)];
@@ -287,8 +278,6 @@ mod tests
   #[test]
   fn abs() -> ()
   {
-    setup();
-
     let result: Value = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let args: Vec<Value> = vec![Value::I32(-5)];
@@ -308,8 +297,6 @@ mod tests
   #[test]
   fn multipleCallsInSingleLibrary() -> ()
   {
-    setup();
-
     let results: Vec<Value> = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let mut outputs: Vec<Value> = Vec::with_capacity(10);
@@ -345,8 +332,6 @@ mod tests
   #[test]
   fn noneArgumentFails() -> ()
   {
-    setup();
-
     let result: Result<Value, _> = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
       let args: Vec<Value> = vec![Value::None];

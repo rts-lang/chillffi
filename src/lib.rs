@@ -11,7 +11,7 @@ pub mod ffi;
 
 // =================================================================================================
 
-use std::{env, io};
+use std::{env};
 use crate::zygote::{initZygote, runAsZygote, ZygoteFlag};
 
 // =================================================================================================
@@ -31,14 +31,9 @@ fn zygoteEntrypoint() -> ()
       runAsZygote();
     }
   }
-  //
-}
 
-/// Zygote initialization; call once, 
-/// as the very first line of the normal main().
-pub fn setupZygote() -> io::Result<()>
-{
-  initZygote()
+  // Делаем это один раз, чтобы запустить основную зиготу
+  initZygote().expect("Failed to setup zygote");
 }
 
 // =================================================================================================
@@ -82,29 +77,6 @@ macro_rules! ffi
       $($body)*
     })()
   };
-}
-
-// =================================================================================================
-
-#[cfg(test)]
-pub mod tests 
-{
-  use std::sync::Once;
-  // ===============================================================================================
-  
-  static Init: Once = Once::new();
-
-  /// Initializes the FFI environment once before running tests.
-  ///
-  /// Uses Once for a safe one-time execution of setupZygote().
-  pub fn setup() 
-  {
-    Init.call_once(|| {
-      super::setupZygote().expect("Failed to setup zygote");
-    });
-  }
-
-  // ===============================================================================================
 }
 
 // =================================================================================================
