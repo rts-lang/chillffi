@@ -72,7 +72,7 @@ macro_rules! ffi
       use $crate::zygote::ZygoteGuard;
 
       // Creating a clone-zygote from the main one
-      let mut zygote: ClonedZygote = ClonedZygote::getMeClone()
+      let zygote: ClonedZygote = ClonedZygote::getMeClone()
         .map_err(|e| $crate::ffi::library::FFIError::Other(e.to_string()))?;
       
       // Registering the clone-zygote in the current thread's ZygoteStack
@@ -82,6 +82,29 @@ macro_rules! ffi
       $($body)*
     })()
   };
+}
+
+// =================================================================================================
+
+#[cfg(test)]
+pub mod tests 
+{
+  use std::sync::Once;
+  // ===============================================================================================
+  
+  static Init: Once = Once::new();
+
+  /// Initializes the FFI environment once before running tests.
+  ///
+  /// Uses Once for a safe one-time execution of setupZygote().
+  pub fn setup() 
+  {
+    Init.call_once(|| {
+      super::setupZygote().expect("Failed to setup zygote");
+    });
+  }
+
+  // ===============================================================================================
 }
 
 // =================================================================================================
