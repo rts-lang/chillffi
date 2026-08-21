@@ -336,27 +336,19 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 
 // =================================================================================================
 
-/// Called from worker - callExternal();
-///
-/// upon loss of connection with the zygote — 
-/// recreates it (via Command) and retries the request once.
+/// Called from worker — callExternal(). Будет всего одна попытка.
 pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
 {
   let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
     .ok_or_else(|| "Zygote not initialized".to_string())?;
-  let mut guard = mutex.lock()
+  let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
     .map_err(|_| "Zygote mutex poisoned".to_string())?;
 
   let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
-  if let Ok(responseBytes) = sendAndReceive(&mut guard.socket, &bytes)
-  {
-    return decode(&responseBytes).map_err(|e| e.to_string());
-  }
-
-  *guard = spawnZygote().map_err(|e| format!("Zygote respawn failed: {}", e))?;
-  let responseBytes: Vec<u8> = sendAndReceive(&mut guard.socket, &bytes).map_err(|e| e.to_string())?;
+  let responseBytes: Vec<u8> = sendAndReceive(&mut guard.socket, &bytes)
+    .map_err(|e| e.to_string())?;
   drop(guard);
-  
+
   decode(&responseBytes).map_err(|e| e.to_string())
 }
 
