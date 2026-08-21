@@ -102,7 +102,8 @@ impl ClonedZygote
   /// Requests a clone from the main zygote and returns its RAII handle
   pub fn getMeClone() -> io::Result<Self>
   {
-    let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
+    let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
+      .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Zygote not initialized"))?;
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
       .map_err(|_| io::Error::new(io::ErrorKind::Other, "Zygote mutex poisoned"))?;
 
@@ -335,10 +336,12 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 /// recreates it (via Command) and retries the request once.
 pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
 {
-  let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
-  let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
-  let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
+  let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
+    .ok_or_else(|| "Zygote not initialized".to_string())?;
+  let mut guard = mutex.lock()
+    .map_err(|_| "Zygote mutex poisoned".to_string())?;
 
+  let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
   if let Ok(responseBytes) = sendAndReceive(&mut guard.socket, &bytes)
   {
     return decode(&responseBytes).map_err(|e| e.to_string());
@@ -367,12 +370,12 @@ fn supervisorLoop() -> ()
   {
     let pidToWait: u32 = {
       let mutex: &Mutex<ZygoteHandle> = match ZygoteState.get() { Some(m) => m, None => return };
-      mutex.lock().unwrap().process.id()
+      mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).process.id()
     };
     unsafe { libc::waitpid(pidToWait as libc::pid_t, std::ptr::null_mut(), 0); }
 
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
-    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if guard.process.id() == pidToWait // Not recreated in parallel yet through call()
     {
       match spawnZygote()

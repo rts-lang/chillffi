@@ -28,6 +28,10 @@ pub enum FFIError
   /// Data deserialization error during IPC.
   DecodeFailed(String),
 
+  /// Internal error of the FFI mechanism: storage/argsFfi out of sync
+  /// (runtime bug, not an input data issue).
+  ArgumentDowncastFailed(String),
+
   /// Other unclassified errors.
   Other(String)
 }

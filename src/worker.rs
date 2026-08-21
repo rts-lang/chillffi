@@ -154,69 +154,63 @@ fn prepareFFIArgs<'a>(
     match arg 
     {
       Value::U8(_) => {
-        let val: &u8 = storage[i].downcast_ref::<u8>().unwrap();
+        let val: &u8 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::U16(_) => {
-        let val: &u16 = storage[i].downcast_ref::<u16>().unwrap();
+        let val: &u16 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::U32(_) => {
-        let val: &u32 = storage[i].downcast_ref::<u32>().unwrap();
+        let val: &u32 =downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::U64(_) => {
-        let val: &u64 = storage[i].downcast_ref::<u64>().unwrap();
+        let val: &u64 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::Usize(_) => {
-        let val: &usize = storage[i].downcast_ref::<usize>().unwrap();
+        let val: &usize = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::I8(_) => {
-        let val: &i8 = storage[i].downcast_ref::<i8>().unwrap();
+        let val: &i8 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::I16(_) => {
-        let val: &i16 = storage[i].downcast_ref::<i16>().unwrap();
+        let val: &i16 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::I32(_) => {
-        let val: &i32 = storage[i].downcast_ref::<i32>().unwrap();
+        let val: &i32 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::I64(_) => {
-        let val: &i64 = storage[i].downcast_ref::<i64>().unwrap();
+        let val: &i64 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::Isize(_) => {
-        let val: &isize = storage[i].downcast_ref::<isize>().unwrap();
+        let val: &isize = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::F32(_) => {
-        let val: &f32 = storage[i].downcast_ref::<f32>().unwrap();
+        let val: &f32 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::F64(_) => {
-        let val: &f64 = storage[i].downcast_ref::<f64>().unwrap();
+        let val: &f64 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::Bool(_) => {
-        let val: &u8 = storage[i].downcast_ref::<u8>().unwrap();
+        let val: &u8 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
       }
       Value::RawString(_) | Value::CString(_) => {
-        let (_, ptr): &(Vec<u8>, *mut c_void) = 
-          storage[i]
-            .downcast_ref()
-            .unwrap();
+        let (_, ptr): &(Vec<u8>, *mut c_void) = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(ptr));
       }
       Value::String(_) => {
-        let (_, ptr, len): &(Vec<u8>, *mut c_void, usize) = 
-          storage[i]
-            .downcast_ref()
-            .unwrap();
+        let (_, ptr, len): &(Vec<u8>, *mut c_void, usize) = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(ptr));
         argsFfi.push(Arg::new(len));
       }
@@ -295,6 +289,13 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
       Value::None
     }
   }
+}
+
+// todo desc
+fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
+{
+  entry.downcast_ref::<T>()
+    .ok_or_else(|| FFIError::ArgumentDowncastFailed("FFI storage type mismatch".to_string()))
 }
 
 // =================================================================================================
