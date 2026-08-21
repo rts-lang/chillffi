@@ -34,7 +34,8 @@ fn zygoteEntrypoint() -> ()
   //
 }
 
-/// todo desc
+/// Zygote initialization; call once, 
+/// as the very first line of the normal main().
 pub fn setupZygote() -> io::Result<()>
 {
   initZygote()
@@ -42,10 +43,23 @@ pub fn setupZygote() -> io::Result<()>
 
 // =================================================================================================
 
-/// todo desc
-/// 
-/// Важно: Он заберет на себя Library - поэтому коду внутри, придется указывать
-/// это иначе при совпадении этого типа данных. todo В целом, это можно исправить в будущем.
+/// Main macro for working with FFI.
+///
+/// It creates a copy of the zygote from the main zygote.
+///
+/// After that, any FFI code can be executed inside it.
+///
+/// Library specifically blocks FFI calls outside this macro.
+///
+/// Isolation allows adding FFI insertions without breaking or corrupting the main runtime.
+///
+/// todo
+///  Important: It will take ownership of the Library type — therefore, the code inside
+///  will have to specify it differently when this data type matches. However, this will
+///  be quite rare, because FFI insertions should be rare and it is not guaranteed that
+///  exactly Library will end up there.
+///  The simplest solution would be for the user to rename the type — then they will not
+///  see errors for their Library type.
 #[macro_export]
 macro_rules! ffi 
 {
@@ -57,14 +71,14 @@ macro_rules! ffi
       use $crate::zygote::ClonedZygote;
       use $crate::zygote::ZygoteGuard;
 
-      // Создание клон-зиготу от основной
+      // Creating a clone-zygote from the main one
       let mut zygote: ClonedZygote = ClonedZygote::getMeClone()
         .map_err(|e| $crate::ffi::library::FFIError::Other(e.to_string()))?;
       
-      // Регистрируем клон-зиготу в ZygoteStack текущего потока
+      // Registering the clone-zygote in the current thread's ZygoteStack
       let _guard: ZygoteGuard = ZygoteGuard::enter(zygote);
 
-      // Выполнение тела
+      // Executing the body
       $($body)*
     })()
   };

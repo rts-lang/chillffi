@@ -17,15 +17,15 @@ pub enum FFIError
   ZygoteNotInitialized,
   NoActiveZygoteScope,
   ZygoteCommunicationFailed(String),
-  LibraryLoadFailed(String),
+  //LibraryLoadFailed(String),
   LibraryNotFound{ libraryPath: String },
-  SymbolNotFound,
-  BadArgument,
-  BadResultType,
+  //SymbolNotFound,
+  //BadArgument,
+  //BadResultType,
   CallFailed{ functionName: String, message: String },
-  UnsupportedPointerReturn,
-  EncodeFailed,
-  DecodeFailed,
+  //UnsupportedPointerReturn,
+  //EncodeFailed,
+  //DecodeFailed,
   Other(String)
 }
 

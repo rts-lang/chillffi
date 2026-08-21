@@ -199,8 +199,8 @@ pub (super) fn runAsZygote() -> !
   zygoteLoop(socket);
 }
 
-/// Zygote initialization; call once, as the very first line of the normal main(),
-/// before args parsing, before file reading, before parseLines/readTokens.
+/// Zygote initialization; call once, 
+/// as the very first line of the normal main().
 pub(super) fn initZygote() -> io::Result<()>
 {
   let handle: ZygoteHandle = spawnZygote()?;

@@ -269,8 +269,9 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
       let val: u8 = unsafe { cif.call::<u8>(codePointer, argsFfi) };
       Value::Bool(val != 0)
     }
-    Type::Pointer => {
-      // Для указателей возвращаем None todo пока не поддерживаем
+    Type::Pointer => 
+    { // For pointers, return None
+      // todo: not supported yet
       Value::None
     }
   }
