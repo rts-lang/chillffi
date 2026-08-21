@@ -94,6 +94,13 @@ impl From<&Type> for libffi::middle::Type
 /// Keeps the arguments in the storage buffer,
 /// so that they are not removed from memory during the C call,
 /// and collects pointers to them.
+/// 
+/// # Memory Lifetime Constraint:
+/// All heap allocations for string buffers (`RawString`, `CString`, `String`) 
+/// are strictly temporary (transient) and guaranteed to be valid ONLY for the duration 
+/// of the FFI call; When `prepareFFIArgs` storage goes out of scope, Rust automatically 
+/// reclaims all vector allocations. If the C side needs to retain this data beyond 
+/// the function execution, it must make its own deep copy (e.g., via `memcpy` or `strdup`).
 fn prepareFFIArgs<'a>(
   args: &'a [Value],
   storage: &'a mut Vec<Box<dyn Any>>,
