@@ -6,14 +6,14 @@ use chillffi::ffi;
 
 fn println(text: &str) -> Result<(), FFIError>
 {
-  ffi!{
+  ffi!{ Scope =>
     let libc: Library = Library::load("libc.so.6")?;
 
     // C-string null termination
     let mut bytes: Vec<u8> = text.as_bytes().to_vec();
     bytes.push(0);
 
-    let mem: AllocatedMemory = Library::alloc(bytes.len())?;
+    let mem: AllocatedMemory = Scope.alloc(bytes.len())?;
     mem.write(Value::RawString(bytes))?;
 
     // puts(const char *s) automatically appends a newline

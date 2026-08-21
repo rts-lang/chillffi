@@ -1,4 +1,4 @@
-use chillffi::ffi::allocatedMemory::AllocatedMemory;
+use chillffi::ffi::allocatedMemory::{AllocatedMemory};
 use chillffi::ffi::value::{Type, Value};
 use chillffi::ffi::errors::FFIError;
 use chillffi::ffi;
@@ -8,11 +8,11 @@ fn main() -> ()
 {
   // clock_gettime(CLOCK_REALTIME, &timespec) — struct out-param via Alloc/ReadMemory,
   // the case a plain Value::Pointer can't cover on its own.
-  let (secs, nanos): (i64, i64) = ffi!{
+  let (secs, nanos): (i64, i64) = ffi!{ Scope =>
     let libc: Library = Library::load("libc.so.6")?;
 
     // struct timespec { time_t tv_sec; long tv_nsec; } — 16 bytes on x86_64 Linux
-    let mem: AllocatedMemory = Library::alloc(16)?;
+    let mem: AllocatedMemory = Scope.alloc(16)?;
 
     libc.call("clock_gettime", vec![Value::I32(0 /* CLOCK_REALTIME */), mem.asPointer()], Type::I32)?;
 

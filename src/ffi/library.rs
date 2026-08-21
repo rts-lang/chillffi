@@ -1,4 +1,3 @@
-use crate::ffi::allocatedMemory::AllocatedMemory;
 use std::cell::RefMut;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
@@ -170,15 +169,6 @@ impl __Library<true>
     Ok(())
   }
 
-  /// Allocates `length` bytes in the clone's heap.
-  pub fn alloc(length: usize) -> Result<AllocatedMemory, FFIError>
-  {
-    match sendRawRequest(FFIRequest::Alloc { length })? {
-      Value::Pointer(address) => Ok(AllocatedMemory::new(address, length)),
-      _ => Err(FFIError::Other("Alloc did not return a pointer".to_string())),
-    }
-  }
-
   /// Frees memory previously obtained via `alloc` (or a C-side allocator).
   pub fn free(pointer: usize) -> Result<(), FFIError>
   {
@@ -306,8 +296,8 @@ mod tests
   fn multipleCallsInSingleLibrary() -> ()
   {
     let results: Vec<Value> = ffi!{
-      let libm: Library = Library::load("libm.so.6")?;
       let mut outputs: Vec<Value> = Vec::with_capacity(10);
+      let libm: Library = Library::load("libm.so.6")?;
   
       // 10 consecutive libm.call() calls with a single loaded library
       for i in 1..=10 
@@ -356,11 +346,10 @@ mod tests
   #[test]
   fn allocReadMemoryRoundtrip() -> ()
   {
-    let bytes: Vec<u8> = ffi!{
+    let bytes: Vec<u8> = ffi!{ Scope =>
+      let mem: AllocatedMemory = Scope.alloc(8)?;
+
       let libc: Library = Library::load("libc.so.6")?;
-
-      let mem: AllocatedMemory = Library::alloc(8)?;
-
       // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
       libc.call("memset", vec![mem.asPointer(), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
 
@@ -378,11 +367,10 @@ mod tests
   #[test]
   fn allocWriteMemoryRoundtrip() -> ()
   {
-    let bytes: Vec<u8> = ffi!{
-      let _libc: Library = Library::load("libc.so.6")?;
+    let bytes: Vec<u8> = ffi!{ Scope =>
       let payload: Vec<u8> = vec![1, 2, 3, 4, 5];
 
-      let mem: AllocatedMemory = Library::alloc(payload.len())?;
+      let mem: AllocatedMemory = Scope.alloc(payload.len())?;
       mem.write(Value::RawString(payload))?;
 
       let Value::RawString(readBytes) = mem.read()? else { 

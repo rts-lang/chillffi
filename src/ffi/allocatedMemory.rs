@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use crate::ffi::errors::FFIError;
 use crate::ffi::library::sendRawRequest;
 use crate::ffi::value::Value;
@@ -13,19 +14,29 @@ use crate::zygote::FFIRequest;
 /// 
 /// Для работы с сырыми адресами, выделенными C-стороной (например, `strdup`),
 /// используйте напрямую методы `Library` напрямую.
-pub struct AllocatedMemory 
+/// 
+/// 'g — время жизни ScopeGuard блока ffi!{}, в котором она создана.
+/// Пока это не 'static — значение физически нельзя вернуть из ffi!{} наружу.
+pub struct AllocatedMemory<'g>
 {
   /// todo desc
   address: usize,
   /// todo desc
   length: usize,
+  /// todo desc
+  _scope: PhantomData<&'g ()>
 }
 
-impl AllocatedMemory 
+impl<'g> AllocatedMemory<'g>
 {
   /// todo desc
-  pub(super) fn new(address: usize, length: usize) -> Self {
-    Self { address, length }
+  pub(super) fn new(address: usize, length: usize) -> Self 
+  {
+    Self {
+      address,
+      length,
+      _scope: PhantomData,
+    }
   }
 
   /// todo desc
@@ -50,7 +61,7 @@ impl AllocatedMemory
   }
 }
 
-impl Drop for AllocatedMemory 
+impl<'g> Drop for AllocatedMemory<'g>
 {
   /// todo desc
   fn drop(&mut self) 
