@@ -30,9 +30,26 @@ pub enum Value
   //
   Bool(bool),
 
-  /// Храним адрес как обычное число
-  /// 
-  /// todo Надо описание его жизни и поведения и почему число
+  /// Store the address as a regular number;
+  ///
+  /// The address is stored as usize rather than as a raw pointer — for two reasons:
+  /// serialization through bincode/serde (raw pointers cannot do this)
+  /// and the fact that the owner of the memory is the C code on the zygote clone side,
+  /// not Rust.
+  ///
+  /// # Lifetime
+  /// Valid strictly within the same ffi!{} block — that is, inside the same
+  /// zygote clone. The clone dies when leaving the block
+  /// (ZygoteGuard::drop → SIGKILL), and along with it dies the address
+  /// space to which this address belonged.
+  ///
+  /// Using it outside the block is undefined behavior, not an Err:
+  /// a new clone is forked from the same parent zygote and often has
+  /// the same mapped address space, therefore at that address
+  /// there may be unrelated memory instead of the expected crash.
+  ///
+  /// Ownership and deallocation (free/strdup and similar) are exclusively on
+  /// the side of the calling C code.
   Pointer(usize),
 
   /// In C code, one would expect `uint8_t *data`;
