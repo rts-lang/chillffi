@@ -6,6 +6,7 @@ use crate::ffi::value::Value;
 use crate::zygote::FFIRequest;
 // =================================================================================================
 
+/// todo desc
 struct HeavyStack
 {
   // Выделенный стек или арена
@@ -13,7 +14,7 @@ struct HeavyStack
 
 /// Владелец HeavyStack. Заводится макросом ffi!{} один раз на блок (только если
 /// пользователь запросил Scope), живёт и умирает строго с этим блоком.
-/// Не публикуется напрямую пользователю — доступ только через Scope<'g>.
+/// Не публикуется напрямую — доступ только через Scope<'g>.
 #[doc(hidden)]
 pub struct ScopeGuard
 {
@@ -49,11 +50,11 @@ impl<'g> Scope<'g>
   pub fn alloc(&self, length: usize) -> Result<AllocatedMemory<'g>, FFIError>
   {
     unsafe {
-      let stack = &mut *self.guard.inner.get();
+      let stack: &mut Option<HeavyStack> = &mut *self.guard.inner.get();
 
       // Инициализация тяжелого стека происходит ТОЛЬКО при первом вызове alloc()
       if stack.is_none() {
-        *stack = Some(HeavyStack { /* ... */ });
+        *stack = Some(HeavyStack{});
       }
     }
 

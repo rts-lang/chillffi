@@ -346,8 +346,8 @@ mod tests
   #[test]
   fn allocReadMemoryRoundtrip() -> ()
   {
-    let bytes: Vec<u8> = ffi!{ Scope =>
-      let mem: AllocatedMemory = Scope.alloc(8)?;
+    let bytes: Vec<u8> = ffi!(|scope| {
+      let mem: AllocatedMemory = scope.alloc(8)?;
 
       let libc: Library = Library::load("libc.so.6")?;
       // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
@@ -358,7 +358,7 @@ mod tests
       };
 
       Ok(bytes)
-    }.expect("alloc/readMemory/free roundtrip failed");
+    }).expect("alloc/readMemory/free roundtrip failed");
 
     assert_eq!(bytes, vec![0xABu8; 8]);
   }
@@ -367,17 +367,17 @@ mod tests
   #[test]
   fn allocWriteMemoryRoundtrip() -> ()
   {
-    let bytes: Vec<u8> = ffi!{ Scope =>
+    let bytes: Vec<u8> = ffi!(|scope| {
       let payload: Vec<u8> = vec![1, 2, 3, 4, 5];
 
-      let mem: AllocatedMemory = Scope.alloc(payload.len())?;
+      let mem: AllocatedMemory = scope.alloc(payload.len())?;
       mem.write(Value::RawString(payload))?;
 
       let Value::RawString(readBytes) = mem.read()? else { 
         return Err(FFIError::Other("expected bytes".into())) 
       };
       Ok(readBytes)
-    }.expect("writeMemory roundtrip failed");
+    }).expect("writeMemory roundtrip failed");
 
     assert_eq!(bytes, vec![1, 2, 3, 4, 5]);
   }

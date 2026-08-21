@@ -58,11 +58,11 @@ fn zygoteEntrypoint() -> ()
 #[macro_export]
 macro_rules! ffi 
 {
-  // Вариант с доступом к Scope. Имя скоупа юзер пишет сам (например Scope =>) —
-  // поэтому оно в одном hygiene-контексте с телом и видно внутри $body.
+  // Вариант с доступом к Scope. `ffi!(|scope| {})`. 
+  // Может быть любое имя scope - главное без повторений внутри {}.
   // Scope<'g> заимствует ScopeGuard этого блока, поэтому AllocatedMemory<'g>
   // не может быть возвращена наружу — это ловит компилятор, а не мы.
-  ($scopeName:ident => $($body:tt)*) => 
+  (|$scopeName:ident| { $($body:tt)* }) => 
   {
     (|| -> Result<_, $crate::ffi::errors::FFIError> 
     {
