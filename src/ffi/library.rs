@@ -343,7 +343,7 @@ mod tests
 
   /// Checks passing Value::None as an argument - should return an error.
   #[test]
-  fn testNoneArgumentFails() -> ()
+  fn noneArgumentFails() -> ()
   {
     setup();
 

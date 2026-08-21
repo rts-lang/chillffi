@@ -40,32 +40,27 @@ pub fn callExternal(
 
 // =================================================================================================
 
-impl TryFrom<&Value> for libffi::middle::Type 
+// todo desc
+fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, String>
 {
-  type Error = String;
-
-  /// Determines the argument type for the C function
-  /// and immediately filters out None, which cannot be passed.
-  fn try_from(val: &Value) -> Result<Self, Self::Error> 
+  match val
   {
-    match val 
-    {
-      Value::U8(_) => Ok(Self::u8()),
-      Value::U16(_) => Ok(Self::u16()),
-      Value::U32(_) => Ok(Self::u32()),
-      Value::U64(_) => Ok(Self::u64()),
-      Value::Usize(_) => Ok(Self::usize()),
-      Value::I8(_) => Ok(Self::i8()),
-      Value::I16(_) => Ok(Self::i16()),
-      Value::I32(_) => Ok(Self::i32()),
-      Value::I64(_) => Ok(Self::i64()),
-      Value::Isize(_) => Ok(Self::isize()),
-      Value::F32(_) => Ok(Self::f32()),
-      Value::F64(_) => Ok(Self::f64()),
-      Value::Bool(_) => Ok(Self::u8()),
-      Value::ByteVector(_) => Ok(Self::pointer()),
-      Value::None => Err("Cannot pass None as argument".to_string()),
-    }
+    Value::U8(_) => Ok(vec![libffi::middle::Type::u8()]),
+    Value::U16(_) => Ok(vec![libffi::middle::Type::u16()]),
+    Value::U32(_) => Ok(vec![libffi::middle::Type::u32()]),
+    Value::U64(_) => Ok(vec![libffi::middle::Type::u64()]),
+    Value::Usize(_) => Ok(vec![libffi::middle::Type::usize()]),
+    Value::I8(_) => Ok(vec![libffi::middle::Type::i8()]),
+    Value::I16(_) => Ok(vec![libffi::middle::Type::i16()]),
+    Value::I32(_) => Ok(vec![libffi::middle::Type::i32()]),
+    Value::I64(_) => Ok(vec![libffi::middle::Type::i64()]),
+    Value::Isize(_) => Ok(vec![libffi::middle::Type::isize()]),
+    Value::F32(_) => Ok(vec![libffi::middle::Type::f32()]),
+    Value::F64(_) => Ok(vec![libffi::middle::Type::f64()]),
+    Value::Bool(_) => Ok(vec![libffi::middle::Type::u8()]),
+    Value::RawString(_) | Value::CString(_) => Ok(vec![libffi::middle::Type::pointer()]),
+    Value::String(_) => Ok(vec![libffi::middle::Type::pointer(), libffi::middle::Type::usize()]),
+    Value::None => Err("Cannot pass None as argument".to_string()),
   }
 }
 
@@ -123,7 +118,7 @@ fn prepareFFIArgs<'a>(
       Value::F32(v) => storage.push(Box::new(*v)),
       Value::F64(v) => storage.push(Box::new(*v)),
       Value::Bool(b) => storage.push(Box::new(if *b { 1u8 } else { 0u8 })),
-      Value::ByteVector(v) => 
+      Value::RawString(v) => 
       { // For a byte vector, pass a pointer to the data;
         // Important: If the C code needs it for a long time, it is its responsibility.
         // The pointer will be removed by us because it is temporary 
@@ -131,6 +126,18 @@ fn prepareFFIArgs<'a>(
         let mut vec: Vec<u8> = v.clone();
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
         storage.push(Box::new((vec, pointer)));
+      }
+      Value::CString(v) => {
+        let mut vec: Vec<u8> = v.clone();
+        if !vec.ends_with(&[0]) { vec.push(0); } // Гарантия \0
+        let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
+        storage.push(Box::new((vec, pointer)));
+      }
+      Value::String(v) => {
+        let mut vec: Vec<u8> = v.clone();
+        let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
+        let len: usize = vec.len();
+        storage.push(Box::new((vec, pointer, len))); // Сохранение длины
       }
       Value::None => return Err("Cannot pass None".to_string()),
     }
@@ -194,11 +201,20 @@ fn prepareFFIArgs<'a>(
         let val: &u8 = storage[i].downcast_ref::<u8>().unwrap();
         argsFfi.push(Arg::new(val));
       }
-      Value::ByteVector(_) => {
-        let (_, ptr): &(Vec<u8>, *mut c_void) = storage[i]
-          .downcast_ref::<(Vec<u8>, *mut c_void)>()
-          .unwrap();
+      Value::RawString(_) | Value::CString(_) => {
+        let (_, ptr): &(Vec<u8>, *mut c_void) = 
+          storage[i]
+            .downcast_ref()
+            .unwrap();
         argsFfi.push(Arg::new(ptr));
+      }
+      Value::String(_) => {
+        let (_, ptr, len): &(Vec<u8>, *mut c_void, usize) = 
+          storage[i]
+            .downcast_ref()
+            .unwrap();
+        argsFfi.push(Arg::new(ptr));
+        argsFfi.push(Arg::new(len));
       }
       Value::None => return Err("Cannot pass None".to_string()),
     }
@@ -317,10 +333,10 @@ pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -
   };
 
   // Build argument types for CIF
-  let argsTypes: Vec<libffi::middle::Type> = args
-    .iter()
-    .map(libffi::middle::Type::try_from)
-    .collect::<Result<Vec<_>, _>>()?;
+  let mut argsTypes: Vec<libffi::middle::Type> = Vec::new();
+  for arg in &args {
+    argsTypes.extend(toCifTypes(arg)?);
+  }
 
   let returnType: libffi::middle::Type = libffi::middle::Type::from(&ffiResultType);
 
