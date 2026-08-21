@@ -1,3 +1,4 @@
+use crate::ffi::library::FFIError;
 use std::any::Any;
 use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};
@@ -34,14 +35,14 @@ pub fn callExternal(
   match zygote::call(request)?
   {
     FFIResponse::Ok(value) => Ok(value),
-    FFIResponse::Err(e) => Err(e),
+    FFIResponse::Err(e) => Err(e.to_string()),
   }
 }
 
 // =================================================================================================
 
 // todo desc
-fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, String>
+fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
 {
   match val
   {
@@ -60,7 +61,7 @@ fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, String>
     Value::Bool(_) => Ok(vec![libffi::middle::Type::u8()]),
     Value::RawString(_) | Value::CString(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::String(_) => Ok(vec![libffi::middle::Type::pointer(), libffi::middle::Type::usize()]),
-    Value::None => Err("Cannot pass None as argument".to_string()),
+    Value::None => Err(FFIError::BadArgument("Cannot pass Value::None as argument".to_string())),
   }
 }
 
@@ -104,7 +105,7 @@ impl From<&Type> for libffi::middle::Type
 fn prepareFFIArgs<'a>(
   args: &'a [Value],
   storage: &'a mut Vec<Box<dyn Any>>,
-) -> Result<Vec<Arg<'a>>, String> 
+) -> Result<Vec<Arg<'a>>, FFIError> 
 {
   // Prepare storage for the values
   // that the arguments will reference.
@@ -142,7 +143,7 @@ fn prepareFFIArgs<'a>(
         let len: usize = vec.len();
         storage.push(Box::new((vec, pointer, len))); // Saving the length
       }
-      Value::None => return Err("Cannot pass None".to_string()),
+      Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
     }
   }
 
@@ -219,7 +220,7 @@ fn prepareFFIArgs<'a>(
         argsFfi.push(Arg::new(ptr));
         argsFfi.push(Arg::new(len));
       }
-      Value::None => return Err("Cannot pass None".to_string()),
+      Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
     }
   }
 
@@ -303,12 +304,12 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
 /// performs `dlopen` of a specific library and calls the function through libffi;
 /// 
 /// is called once per request, after which the worker terminates.
-pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, String>
+pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
 {
   // Check arguments for the presence of Value::None before building C ABI types
   for (index, arg) in request.args.iter().enumerate() {
     if matches!(arg, Value::None) {
-      return Err(format!("Cannot pass Value::None as argument at index {}", index));
+      return Err(FFIError::BadArgument(format!("Cannot pass Value::None as argument at index {}", index)));
     }
   }
   
@@ -322,7 +323,7 @@ pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -
   if !cache.contains_key(&libraryPath) {
     let lib: Library = unsafe {
       Library::new(&libraryPath)
-        .map_err(|e| format!("Failed to load library: {}", e))?
+        .map_err(|e| FFIError::LibraryLoadFailed { libraryPath: libraryPath.clone(), message: e.to_string() })?
     };
     cache.insert(libraryPath.clone(), lib);
   }
@@ -332,7 +333,7 @@ pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -
   let functionPointer: *mut c_void = unsafe {
     *library
       .get::<*mut c_void>(functionName.as_bytes())
-      .map_err(|e| format!("Failed to find function: {}", e))?
+      .map_err(|_| FFIError::SymbolNotFound { functionName: functionName.clone() })?
   };
 
   // Build argument types for CIF

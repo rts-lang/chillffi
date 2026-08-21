@@ -60,7 +60,7 @@ pub struct FFIRequest
 pub enum FFIResponse
 {
   Ok(Value),
-  Err(String)
+  Err(FFIError)
 }
 
 /// Controls the zygote process and 
@@ -321,9 +321,9 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
     Ok(request) => match executeFFI(request, cache)
     {
       Ok(value) => FFIResponse::Ok(value),
-      Err(e)    => FFIResponse::Err(e),
+      Err(e) => FFIResponse::Err(e)
     },
-    Err(e) => FFIResponse::Err(format!("Bad request: {}", e)),
+    Err(e) => FFIResponse::Err(e)
   }
 }
 
@@ -412,10 +412,12 @@ pub(super) fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, FFIError>
     .map_err(|e| FFIError::EncodeFailed(format!("Encode failed: {}", e)))
 }
 /// Deserializes a byte representation back into a value
-pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 
+pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, FFIError>
 {
   let config: Configuration = bincode::config::standard();
-  bincode::serde::decode_from_slice(bytes, config).map(|(decoded, _bytes_read)| decoded)
+  bincode::serde::decode_from_slice(bytes, config)
+    .map(|(decoded, _)| decoded)
+    .map_err(|e| FFIError::DecodeFailed(format!("Decode failed: {}", e)))
 }
 
 // =================================================================================================

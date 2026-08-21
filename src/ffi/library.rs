@@ -1,3 +1,5 @@
+use serde::Deserialize;
+use serde::Serialize;
 use fxhash::FxHashMap;
 use std::sync::MutexGuard;
 use crate::zygote::ClonedZygote;
@@ -9,27 +11,37 @@ use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
 /// Errors occurring during library loading and call execution.
-///
-/// todo There is no description of each error in the form 
-///   of a comment here, which could be useful.
-///
-/// todo There are no more detailed types with {} 
-///   for detailed debugging here.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FFIError
 {
+  /// Глобальный зигот в ZygoteState не был инициализирован.
   ZygoteNotInitialized,
+  /// Вызов выполняется вне контекста макроса ffi!{}.
   NoActiveZygoteScope,
+  /// Сбой IPC-связи с процессом-зиготом.
   ZygoteCommunicationFailed(String),
-  //LibraryLoadFailed(String),
-  LibraryNotFound{ libraryPath: String },
-  //SymbolNotFound,
-  //BadArgument,
-  //BadResultType,
-  CallFailed{ functionName: String, message: String },
-  //UnsupportedPointerReturn,
+
+  /// Не удалось динамически загрузить библиотеку (.so / .dll).
+  LibraryLoadFailed { libraryPath: String, message: String },
+  /// Запрошенная библиотека не найдена в реестре по ее ID.
+  LibraryNotFound { libraryPath: String },
+
+  /// Запрошенная функция/символ не найдена в загруженной библиотеке.
+  SymbolNotFound { functionName: String },
+  /// Передан невалидный аргумент (например, Value::None).
+  BadArgument(String),
+  /// Запрошен неподдерживаемый тип возвращаемого значения (например, Type::Pointer).
+  BadResultType(String),
+
+  /// Выполнение FFI-функции завершилось ошибкой.
+  CallFailed { functionName: String, message: String },
+
+  /// Ошибка сериализации данных при IPC.
   EncodeFailed(String),
-  //DecodeFailed,
+  /// Ошибка десериализации данных при IPC.
+  DecodeFailed(String),
+
+  /// Прочие неклассифицированные ошибки.
   Other(String)
 }
 
@@ -123,11 +135,8 @@ fn callById(
     // Execute the FFI request through the current zygote
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),
-      Ok(FFIResponse::Err(err)) => Err(FFIError::CallFailed{ 
-        functionName: functionName.to_string(), 
-        message: err 
-      }),
-      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err)),
+      Ok(FFIResponse::Err(err)) => Err(err),
+      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
     }
   })
 }
