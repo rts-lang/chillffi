@@ -2,56 +2,60 @@
 
 **A simple isolated dynamic FFI framework for Rust**
 
-[![Crates.io](https://img.shields.io/crates/v/chillffi.svg)](https://crates.io/crates/chillffi)
-[![Documentation](https://docs.rs/chillffi/badge.svg)](https://docs.rs/chillffi)
+<!-- [![Crates.io](https://img.shields.io/crates/v/chillffi.svg)](https://crates.io/crates/chillffi) -->
+<!-- [![Documentation](https://docs.rs/chillffi/badge.svg)](https://docs.rs/chillffi) -->
 [![License: FCL](https://img.shields.io/badge/License-FCL-blue.svg)](LICENSE.md)
 
-`chillffi` позволяет динамически подгружать C-библиотеки `.so` и вызывать их функции во время выполнения, **изолируя вызовы в отдельном пустом процессе**.
+`chillffi` allows dynamically loading C libraries `.so` 
+and calling their functions at runtime, **isolating the calls in a separate empty process**.
 
-Если сторонний C-код упадет или испортит что-то, ваше основное Rust-приложение продолжит работу.
+If third-party C code crashes or corrupts something, your main Rust application will continue running.
 
-_(В будущем планируется расширение функционала для работы с FFI)_
-
----
-
-## ✨ Особенности
-
-* 🛡️ **Изоляция сбоев (Crash Isolation)**: Сбой или паника внутри ненадежного FFI-кода не ломает и не портит главный процесс.
-* ⚡ **Зигота-модель (Zygote)**: Быстрый форк и спавн изолированных воркеров с минимальными накладными расходами.
-* 🚀 **In-memory IPC**: Передача файловых дескрипторов и данных через сокеты без обращения к диску.
-* 🧩 **Динамический FFI**: Вызовы функций на лету без необходимости компилировать статичные C-биндинги.
+_(In the future, an expansion of the functionality for working with FFI is planned.)_
 
 ---
 
-## 📦 Установка
+## ✨ Features
 
-Добавьте зависимость в `Cargo.toml`:
+* 🛡️ **Crash Isolation**: A crash or panic inside unreliable FFI code does not break or corrupt the main process.
+* ⚡ **Zygote Model (Zygote)**: Fast forking and spawning of isolated workers with minimal overhead.
+* 🚀 **In-memory IPC**: Transfer of file descriptors and data through sockets without accessing the disk.
+* 🧩 **Dynamic FFI**: On-the-fly function calls without the need to compile static C bindings.
 
-**Замечание**: поддерживается только для Unix-подобных ОС, а тестировалось только для Linux.
+---
 
-_(В планах: Windows, macOS, WASM, Bare metal.)_
+## 📦 Installation
 
-## 🚀 Быстрый старт
+Add the dependency to `Cargo.toml`:
 
-Пример безопасного вызова функции `sqrt` из системной библиотеки `libm.so.6` с помощью макроса `ffi!{}` и явной типизацией:
+**Note**: supported only on Unix-like OSes, and tested only on Linux.
+
+_(Planned: Windows, macOS, WASM, Bare metal.)_
+
+## 🚀 Quick Start
+
+Example of a safe call to the `sqrt` function from the system library `libm.so.6` using the `ffi!{}` macro and explicit typing:
 
 ```rust
 fn main() -> ()
 {
-  // Выполняем FFI-вызов внутри изолированного контекста с помощью макроса
+  // Perform an FFI call inside an isolated context using a macro
   let result: Value = ffi!{
-    // 1. Динамически загружаем системную библиотеку
+    // 1. Dynamically load the system library
     let libm: Library = Library::load("libm.so.6")?;
   
-    // 2. Подготавливаем вектор аргументов
+    // 2. Prepare the argument vector
     let args: Vec<Value> = vec![Value::F64(4.0)];
   
-    // 3. Вызываем функцию "sqrt", указав ожидаемый тип возврата Type::F64
+    // 3. Call the "sqrt" function, specifying the expected return type Type::F64
     Ok(libm.call("sqrt", args, Type::F64)?)
+    
+    // Here libm will be automatically cleared due to drop() when exiting the closure.
+    // You can also do this manually via drop(libm) or libm.unload()?
   }.expect("FFI call failed");
 
-  // Обрабатываем типизированный результат
-  match result 
+  // Process the typed result
+  match result
   {
     Value::F64(val) => 
     {
@@ -63,55 +67,60 @@ fn main() -> ()
 }
 ```
 
-Более подробные примеры смотрите в папке [examples](examples).
+For more detailed examples, see the [examples](examples) folder.
 
-Вы также можете запустить их через `cargo run --example <name>`.
+You can also run them via `cargo run --example <name>`.
 
-## ⚡ Почему это удобно
+## ⚡ Why is this convenient
 
-В общей практике мы привыкли делать как в Python и других языках программирования - точно указывая все обвязки для FFI. 
-После чего мы наблюдаем как FFI все равно падает и библиотеки не собираются, а код не работает.
+In general practice, we are used to doing it like in Python 
+and other programming languages - precisely specifying all the wrappers for FFI.
+After which we observe how FFI still crashes anyway 
+and the libraries are not built, and the code does not work.
 
-Все потому что FFI требует ручного моста и это не всегда получается сделать.
+This is all because FFI requires a manual bridge and it is not always possible to make one.
 
-**chillffi** работает по-другому принципу - вы можете писать любой FFI код внутри изолированных блоков. 
-Потому что FFI не должен быть у вас разбросан по коду - это unsafe подход. 
-Поэтому мы пишем его изолированно и желательно кратко только по необходимости.
+**chillffi** works on a different principle - you can write any FFI code inside isolated blocks.
+Because FFI should not be scattered throughout your code - this is an unsafe approach.
+Therefore, we write it in isolation and preferably briefly, only when necessary.
 
-Поскольку все находится в изолированных процессах - то мы никак не портим main runtime и не трогаем ваш код.
-Все FFI запросы работают стерильно и при ошибках явно дадут вам это знать. Вы также можете просто игнорировать их если хотите.
+Since everything is located in isolated processes - 
+we do not damage the main runtime in any way and do not touch your code.
+All FFI requests work in a sterile manner and 
+in case of errors will clearly let you know about it. 
+You can also simply ignore them if you want.
 
-В результате мы можем свободно и просто писать:
-- Тестовый код
-- Обучающий код
-- Мосты FFI
-- Динамические языки программирования
-- Игровые движки
-- Системы реагирования и динамические системы
-- И многие другие вещи
+As a result, we can freely and simply write:
+- Test code
+- Educational code
+- FFI bridges
+- Dynamic programming languages
+- Game engines
+- Reactive systems and dynamic systems
+- And many other things
 
-Это также отличается от WASM подхода - потому что мы сохраняем здесь настоящий нативный запуск.
+This is also different from the WASM approach - because we preserve a true native execution here.
 
-## 🛠️ Как это работает
+## 🛠️ How it works
 
-1. До начала работы вашего кода создается Зигота - это пустой процесс для клонирования и изоляции FFI.
-2. При необходимости работы с FFI - создается копия от зиготы.
-3. Данные и дескрипторы передаются через защищенный канал сокетов в памяти.
-4. В случае ошибок супервизор перехватывает падение воркера и возвращает ошибку в Rust, сохраняя ваше приложение стабильным.
+1. Before your code starts running, a Zygote is created - it is an empty process for cloning itself and isolating FFI.
+2. When work with FFI is required - a copy is created from the zygote.
+3. Data and descriptors are transferred through a secure socket channel in memory.
+4. In case of errors, the supervisor intercepts the worker crash and returns the error to Rust, keeping your application stable.
 
-## 📄 Лицензия
+## 📄 License
 
-Исходный код распространяется под лицензией [FCL](LICENSE.md).
-Это кастомная лицензия языка программирования [RTS](https://github.com/rts-lang/rts).
+The source code is distributed under the [FCL](LICENSE.md) license.
+This is a custom license of the [RTS](https://github.com/rts-lang/rts) programming language.
 
-Кроме того **chillffi** распространяется по этой лицензии потому, что исходный код был
-взят изначально из самого языка RTS. Поэтому он еще и наследует эту лицензию.
+In addition, **chillffi** is distributed under this license because the source code was
+originally taken from the **RTS** language itself. Therefore, **chillffi** inherits this license.
 
-Для более точного понимания следует ознакомиться с текстом лицензии.
+For a more accurate understanding, you should familiarize yourself with the text of the license.
 
-Но если очень просто для тех кто просто работает и хочет использовать:
-- Личное/некоммерческое использование → свободно
-- Коммерческое использование без изменений → свободно
-- Коммерческое использование с изменениями → требуется разрешение автора или открытие изменений
+But if very simply, for those who just work and want to use it:
+- Personal/non-commercial use → free
+- Commercial use without modifications → free
+- Commercial use with modifications → requires the author's permission or opening the changes
 
-Учитывайте это для ваших проектов.
+Keep this in mind for your projects.
