@@ -59,9 +59,10 @@ fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
     Value::F32(_) => Ok(vec![libffi::middle::Type::f32()]),
     Value::F64(_) => Ok(vec![libffi::middle::Type::f64()]),
     Value::Bool(_) => Ok(vec![libffi::middle::Type::u8()]),
+    Value::Pointer(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::RawString(_) | Value::CString(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::String(_) => Ok(vec![libffi::middle::Type::pointer(), libffi::middle::Type::usize()]),
-    Value::None => Err(FFIError::BadArgument("Cannot pass Value::None as argument".to_string())),
+    Value::None => Err(FFIError::BadArgument("Cannot pass Value::None as argument".to_string()))
   }
 }
 
@@ -126,6 +127,10 @@ fn prepareFFIArgs<'a>(
       Value::F32(v) => storage.push(Box::new(*v)),
       Value::F64(v) => storage.push(Box::new(*v)),
       Value::Bool(b) => storage.push(Box::new(if *b { 1u8 } else { 0u8 })),
+      Value::Pointer(addr) => {
+        let ptr: *mut c_void = *addr as *mut c_void;
+        storage.push(Box::new(ptr)); // Pointer
+      }
       Value::RawString(v) => {
         let mut vec: Vec<u8> = v.clone();
         let pointer: *mut c_void = vec.as_mut_ptr() as *mut c_void;
@@ -204,6 +209,10 @@ fn prepareFFIArgs<'a>(
       Value::Bool(_) => {
         let val: &u8 = downcastRef(&storage[i])?;
         argsFfi.push(Arg::new(val));
+      }
+      Value::Pointer(_) => {
+        let ptr: &*mut c_void = storage[i].downcast_ref().unwrap();
+        argsFfi.push(Arg::new(ptr));
       }
       Value::RawString(_) | Value::CString(_) => {
         let (_, ptr): &(Vec<u8>, *mut c_void) = downcastRef(&storage[i])?;
@@ -284,9 +293,9 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
       Value::Bool(val != 0)
     }
     Type::Pointer => 
-    { // For pointers, return None
-      // todo: not supported yet
-      Value::None
+    { 
+      let ptr: *mut c_void = unsafe { cif.call::<*mut c_void>(codePointer, argsFfi) };
+      Value::Pointer(ptr as usize)
     }
   }
 }

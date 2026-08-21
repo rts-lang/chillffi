@@ -30,6 +30,11 @@ pub enum Value
   //
   Bool(bool),
 
+  /// Храним адрес как обычное число
+  /// 
+  /// todo Надо описание его жизни и поведения и почему число
+  Pointer(usize),
+
   /// In C code, one would expect `uint8_t *data`;
   /// But without `len` these bytes are useless and `size_t len` is necessary.
   RawString(Vec<u8>),
@@ -85,6 +90,7 @@ mod tests
 {
   use crate::ffi;
   use crate::ffi::value::{Type, Value};
+  use crate::ffi::errors::FFIError;
   // ===============================================================================================
 
   /// Checks all signed integer types (I8, I16, I32, I64, Isize).
@@ -139,7 +145,7 @@ mod tests
 
   /// Checks passing floating point numbers (F32, F64).
   #[test]
-  fn floatTypes() -> ()
+  fn float() -> ()
   {
     let resultF32: Value = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
@@ -166,9 +172,11 @@ mod tests
     }
   }
 
+  // ===============================================================================================
+
   /// Checks passing Bool and Usize types.
   #[test]
-  fn boolAndUnsignedTypes() -> ()
+  fn bool() -> ()
   {
     let resultBool: Value = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
@@ -181,18 +189,48 @@ mod tests
     } else {
       panic!("Expected Value::Bool");
     }
+  }
 
-    let resultUsize: Value = ffi!{
-      let libc: Library = Library::load("libc.so.6")?;
-      let args: Vec<Value> = vec![Value::CString(b"test".to_vec()), Value::Usize(4)];
-      Ok(libc.call("strnlen", args, Type::Usize)?)
-    }.expect("FFI Usize call failed");
+  // ===============================================================================================
 
-    if let Value::Usize(val) = resultUsize {
-      assert_eq!(val, 4);
-    } else {
-      panic!("Expected Value::Usize");
+  /// Checks pointer type handling: passing a valid pointer and receiving NULL for a missing variable.
+  #[test]
+  fn pointer() -> ()
+  {
+    let result: Value = ffi!{
+    let libc: Library = Library::load("libc.so.6")?;
+    let args: Vec<Value> = vec![Value::CString(b"noSuchVar".to_vec())];
+    Ok(libc.call("getenv", args, Type::Pointer)?)
+  }.expect("FFI pointer call failed");
+
+    match result {
+      Value::Pointer(addr) => assert_eq!(addr, 0),
+      _ => panic!("Expected Value::Pointer"),
     }
+  }
+
+  /// Checks that a pointer returned inside one ffi!{} block stays valid for reuse as an argument
+  /// within the same block (same clone process, same address space).
+  ///
+  /// Env vars set in the host are invisible to the clone — its environ was captured at zygote
+  /// startup (before main()). strdup() sidesteps this: it allocates directly in the clone's own
+  /// heap, so the round-trip is verified without relying on inherited process state.
+  #[test]
+  fn pointerRoundtrip() -> ()
+  {
+    let len: Value = ffi!{
+    let libc: Library = Library::load("libc.so.6")?;
+    let source: Vec<Value> = vec![Value::CString(b"hello".to_vec())];
+    let ptr: Value = libc.call("strdup", source, Type::Pointer)?;
+    let Value::Pointer(addr) = ptr else { return Err(FFIError::Other("expected pointer".into())) };
+    assert_ne!(addr, 0);
+
+    let result: Value = libc.call("strlen", vec![Value::Pointer(addr)], Type::Usize)?;
+    libc.call("free", vec![Value::Pointer(addr)], Type::None)?;
+    Ok(result)
+  }.expect("pointer roundtrip failed");
+
+    assert!(matches!(len, Value::Usize(5)));
   }
 
   // ===============================================================================================
