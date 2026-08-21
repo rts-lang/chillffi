@@ -1,3 +1,4 @@
+use std::cell::RefMut;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
 use std::sync::MutexGuard;
@@ -46,6 +47,36 @@ fn unregisterLibrary(id: usize) -> ()
   registry.remove(&id);
 }
 
+// =================================================================================================
+
+// todo desc
+fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
+{
+  // Check whether the global zygote in ZygoteState has been initialized
+  if ZygoteState.get().is_none() { 
+    // todo У callById это будет повторная проверка. 
+    //  Но в callById лучше сразу его проверять
+    return Err(FFIError::ZygoteNotInitialized);
+  }
+  
+  // Search for the active clone in the local stack of the current thread
+  ZygoteStack.with(|stack| {
+    let mut mutStack: RefMut<Vec<ClonedZygote>> = stack.borrow_mut();
+
+    // If the stack is empty — it means the call is being made outside the context of ffi!{}
+    let zygote: &mut ClonedZygote = mutStack
+      .last_mut()
+      .ok_or(FFIError::NoActiveZygoteScope)?;
+
+    // Execute the FFI request through the current zygote
+    match zygote.call(request) {
+      Ok(FFIResponse::Ok(val)) => Ok(val),
+      Ok(FFIResponse::Err(err)) => Err(err),
+      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
+    }
+  })
+}
+
 /// Performs an FFI function call 
 /// by the identifier of the registered library
 fn callById(
@@ -66,31 +97,10 @@ fn callById(
   if !registry.contains_key(&libraryId) {
      return Err(FFIError::LibraryNotFound{ libraryPath: libraryPath.to_string() });
   }
-  
   drop(registry);
-
-  let request: FFIRequest = FFIRequest {
-    libraryPath: libraryPath.to_string(),
-    functionName: functionName.to_string(),
-    args,
-    resultType,
-  };
-
-  // Search for the active clone in the local stack of the current thread
-  ZygoteStack.with(|stack| {
-    let mut mutStack = stack.borrow_mut();
-
-    // If the stack is empty — it means the call is being made outside the context of ffi!{}
-    let zygote: &mut ClonedZygote = mutStack
-      .last_mut()
-      .ok_or(FFIError::NoActiveZygoteScope)?;
-
-    // Execute the FFI request through the current zygote
-    match zygote.call(request) {
-      Ok(FFIResponse::Ok(val)) => Ok(val),
-      Ok(FFIResponse::Err(err)) => Err(err),
-      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
-    }
+  
+  sendRawRequest(FFIRequest::Call {
+    libraryPath: libraryPath.to_string(), functionName: functionName.to_string(), args, resultType,
   })
 }
 
@@ -138,6 +148,15 @@ impl __Library<true>
     callById(self.libraryId, &self.libraryPath, functionName, args, resultType)
   }
 
+  /// Loads the library and registers it for further calls
+  pub fn load(libraryPath: &str) -> Result<Self, FFIError>
+  {
+    let libraryId: usize = nextLibraryId();
+    let ownedPath: String = String::from(libraryPath);
+    registerLibrary(libraryId, &ownedPath);
+    Ok(Self{ libraryId, libraryPath: ownedPath })
+  }
+  
   /// Unloads the library and removes it from the registry;
   ///
   /// Here self instead of &self is used so that after removal it is not possible
@@ -150,13 +169,23 @@ impl __Library<true>
     Ok(())
   }
 
-  /// Loads the library and registers it for further calls
-  pub fn load(libraryPath: &str) -> Result<Self, FFIError>
+  /// Allocates `length` bytes in the clone's heap.
+  pub fn alloc(length: usize) -> Result<Value, FFIError>
   {
-    let libraryId: usize = nextLibraryId();
-    let ownedPath: String = String::from(libraryPath);
-    registerLibrary(libraryId, &ownedPath);
-    Ok(Self{ libraryId, libraryPath: ownedPath })
+    sendRawRequest(FFIRequest::Alloc { length })
+  }
+
+  /// Reads `length` bytes at `pointer` from the clone's memory.
+  pub fn readMemory(pointer: usize, length: usize) -> Result<Value, FFIError>
+  {
+    sendRawRequest(FFIRequest::ReadMemory { pointer, length })
+  }
+
+  /// Frees memory previously obtained via `alloc` (or a C-side allocator).
+  pub fn free(pointer: usize) -> Result<(), FFIError>
+  {
+    sendRawRequest(FFIRequest::Free { pointer })?;
+    Ok(())
   }
 }
 
@@ -173,6 +202,7 @@ pub type __FFILibrary = __Library<true>;
 mod tests
 {
   use crate::ffi;
+  use crate::ffi::errors::FFIError;
   use crate::ffi::library::lockRegistry;
   use crate::ffi::value::Value;
   use crate::ffi::value::Type;
@@ -307,7 +337,34 @@ mod tests
 
     assert!(result.is_err(), "FFI call with Value::None should fail");
   }
-  
+
+  // ===============================================================================================
+
+  /// Checks Alloc/ReadMemory/Free round-trip via memset.
+  #[test]
+  fn allocReadMemoryRoundtrip() -> ()
+  {
+    let bytes: Vec<u8> = ffi!{
+      let libc: Library = Library::load("libc.so.6")?;
+
+      let Value::Pointer(addr) = Library::alloc(8)? else { 
+        return Err(FFIError::Other("expected pointer".into())) 
+      };
+
+      // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
+      libc.call("memset", vec![Value::Pointer(addr), Value::I32(0xAB), Value::Usize(8)], Type::Pointer)?;
+
+      let Value::RawString(bytes) = Library::readMemory(addr, 8)? else { 
+        return Err(FFIError::Other("expected bytes".into())) 
+      };
+      Library::free(addr)?;
+
+      Ok(bytes)
+    }.expect("alloc/readMemory/free roundtrip failed");
+
+    assert_eq!(bytes, vec![0xABu8; 8]);
+  }
+
   // ===============================================================================================
 }
 

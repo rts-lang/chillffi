@@ -24,7 +24,7 @@ pub fn callExternal(
 ) -> Result<Value, String>
 {
   // Build the request
-  let request: FFIRequest = FFIRequest {
+  let request: FFIRequest = FFIRequest::Call {
     libraryPath: libraryPath.to_string(),
     functionName: methodName.to_string(),
     args,
@@ -309,22 +309,52 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 
 // =================================================================================================
 
+// todo desc
+pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
+{
+  match request
+  {
+    FFIRequest::Call { libraryPath, functionName, args, resultType } =>
+      executeCall(libraryPath, functionName, args, resultType, cache),
+
+    FFIRequest::Alloc { length } => unsafe {
+      let ptr: *mut c_void = libc::malloc(length);
+      if ptr.is_null() { return Err(FFIError::Other("malloc returned null".to_string())); }
+      Ok(Value::Pointer(ptr as usize))
+    },
+
+    FFIRequest::ReadMemory { pointer, length } => unsafe {
+      if pointer == 0 { return Err(FFIError::BadArgument("null pointer".to_string())); }
+      let slice: &[u8] = std::slice::from_raw_parts(pointer as *const u8, length);
+      Ok(Value::RawString(slice.to_vec()))
+    },
+
+    FFIRequest::Free { pointer } => unsafe {
+      libc::free(pointer as *mut c_void);
+      Ok(Value::None)
+    },
+  }
+}
+
 /// Executes inside the forked zygote worker, not the Zygote itself;
 /// 
 /// performs `dlopen` of a specific library and calls the function through libffi;
 /// 
 /// is called once per request, after which the worker terminates.
-pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
+pub fn executeCall(
+  libraryPath: String,
+  functionName: String,
+  args: Vec<Value>,
+  ffiResultType: Type,
+  cache: &mut FxHashMap<String, Library>
+) -> Result<Value, FFIError>
 {
   // Check arguments for the presence of Value::None before building C ABI types
-  for (index, arg) in request.args.iter().enumerate() {
+  for (index, arg) in args.iter().enumerate() {
     if matches!(arg, Value::None) {
       return Err(FFIError::BadArgument(format!("Cannot pass Value::None as argument at index {}", index)));
     }
   }
-  
-  //
-  let FFIRequest{ libraryPath, functionName, args, resultType: ffiResultType } = request;
 
   // This code is executed in a clone of the main zygote;
   // All resources will be automatically released when the process terminates.

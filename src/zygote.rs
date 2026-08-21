@@ -43,23 +43,25 @@ pub const ZygoteFlag: &str = "__zygote";
 
 /// Request for FFI execution, sent entirely to the zygote
 #[derive(Serialize, Deserialize)]
-pub struct FFIRequest
+pub enum FFIRequest
 {
-  /// Path to the library containing the called function
-  pub libraryPath: String,
-  /// Function name to call in the loaded library
-  pub functionName: String,
-  /// Arguments passed to the function
-  pub args: Vec<Value>,
-  /// Expected return value type
-  pub resultType: Type
+  /// todo desc
+  Call { libraryPath: String, functionName: String, args: Vec<Value>, resultType: Type },
+  /// todo desc
+  Alloc { length: usize },
+  /// todo desc
+  ReadMemory { pointer: usize, length: usize },
+  /// todo desc
+  Free { pointer: usize }
 }
 
 /// Response to the request with the execution result or error
 #[derive(Serialize, Deserialize)]
 pub enum FFIResponse
 {
+  /// todo desc
   Ok(Value),
+  /// todo desc
   Err(FFIError)
 }
 
