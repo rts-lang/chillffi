@@ -28,7 +28,7 @@ pub enum FFIError
   //BadResultType,
   CallFailed{ functionName: String, message: String },
   //UnsupportedPointerReturn,
-  //EncodeFailed,
+  EncodeFailed(String),
   //DecodeFailed,
   Other(String)
 }

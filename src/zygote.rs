@@ -1,3 +1,4 @@
+use crate::ffi::library::FFIError;
 use std::cell::RefCell;
 use std::env;
 use std::io::{self, Read, Write};
@@ -102,14 +103,16 @@ impl ClonedZygote
   pub fn getMeClone() -> io::Result<Self>
   {
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
-    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
+      .map_err(|_| io::Error::new(io::ErrorKind::Other, "Zygote mutex poisoned"))?;
 
     // Sends a signal to create a clone
     writeMessage(&mut guard.socket, &[1u8])?;
 
     // Receives the clone PID
-    let pidBytes: Vec<u8> = readMessage(&mut guard.socket)?;
-    let pid: i32 = i32::from_le_bytes(pidBytes.try_into().unwrap());
+    let mut pidBytes: [u8; 4] = [0u8; 4];
+    guard.socket.read_exact(&mut pidBytes)?;
+    let pid: i32 = i32::from_le_bytes(pidBytes);
 
     // Read the socket descriptor directly from RAM
     let fd: RawFd = recvFd(&mut guard.socket)?;
@@ -122,8 +125,10 @@ impl ClonedZygote
   /// FFI call inside a specific clone
   pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
   {
-    let bytes: Vec<u8> = encode(&request);
-    let responseBytes: Vec<u8> = sendAndReceive(&mut self.socket, &bytes).map_err(|e| e.to_string())?;
+    let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
+    let responseBytes: Vec<u8> = sendAndReceive(&mut self.socket, &bytes)
+      .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+
     decode(&responseBytes).map_err(|e| e.to_string())
   }
 }
@@ -270,7 +275,7 @@ fn zygoteLoop(mut socket: UnixStream) -> !
       pid => {
         // Main zygote: send the PID and forward the socket descriptor to the Runtime
         drop(cloneSocket);
-        if writeMessage(&mut socket, &pid.to_le_bytes()).is_ok() {
+        if socket.write_all(&pid.to_le_bytes()).is_ok() {
           let _ = sendFd(&mut socket, runtimeSocket.as_raw_fd());
         }
       }
@@ -295,7 +300,12 @@ fn cloneLoop(mut socket: UnixStream) -> !
     };
 
     let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
-    if writeMessage(&mut socket, &encode(&response)).is_err() {
+    let encodedResponse: Vec<u8> = match encode(&response) {
+      Ok(bytes) => bytes,
+      Err(_) => std::process::exit(1),
+    };
+
+    if writeMessage(&mut socket, &encodedResponse).is_err() {
       std::process::exit(0);
     }
   }
@@ -325,7 +335,7 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 /// recreates it (via Command) and retries the request once.
 pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
 {
-  let bytes: Vec<u8> = encode(&request);
+  let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
   let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().expect("Zygote not initialized");
   let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap();
 
@@ -395,10 +405,11 @@ fn readMessage(socket: &mut UnixStream) -> io::Result<Vec<u8>>
 }
 
 /// Serializes a value into a byte representation
-pub(super) fn encode<T: Serialize>(value: &T) -> Vec<u8> 
+pub(super) fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, FFIError>
 {
   let config: Configuration = bincode::config::standard();
-  bincode::serde::encode_to_vec(value, config).expect("encode failed")
+  bincode::serde::encode_to_vec(value, config)
+    .map_err(|e| FFIError::EncodeFailed(format!("Encode failed: {}", e)))
 }
 /// Deserializes a byte representation back into a value
 pub(super) fn decode<T: for<'a> Deserialize<'a>>(bytes: &[u8]) -> Result<T, bincode::error::DecodeError> 

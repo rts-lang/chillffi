@@ -67,8 +67,7 @@ macro_rules! ffi
       use $crate::zygote::ZygoteGuard;
 
       // Creating a clone-zygote from the main one
-      let zygote: ClonedZygote = ClonedZygote::getMeClone()
-        .map_err(|e| $crate::ffi::library::FFIError::Other(e.to_string()))?;
+      let zygote: ClonedZygote = ClonedZygote::getMeClone()?;
       
       // Registering the clone-zygote in the current thread's ZygoteStack
       let _guard: ZygoteGuard = ZygoteGuard::enter(zygote);
