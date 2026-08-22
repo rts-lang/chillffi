@@ -5,40 +5,7 @@ use libffi::middle::{Arg, Cif, CodePtr};
 use std::ffi::c_void;
 use fxhash::FxHashMap;
 use crate::ffi::value::{Type, Value};
-use crate::zygote;
-use crate::zygote::{FFIRequest, FFIResponse};
-// =================================================================================================
-
-/// Forms a request and sends it to the Zygote;
-/// this function itself does not fork or load anything — only serialization and IPC;
-///
-/// Accepts the path to the library, the function name, 
-/// arguments as tokens, and the expected result type;
-///
-/// Returns the result as FFIValue or an error.
-pub fn callExternal(
-  libraryPath: &str,
-  methodName: &str,
-  args: Vec<Value>,
-  resultType: Type,
-) -> Result<Value, String>
-{
-  // Build the request
-  let request: FFIRequest = FFIRequest::Call {
-    libraryPath: libraryPath.to_string(),
-    functionName: methodName.to_string(),
-    args,
-    resultType,
-  };
-
-  // Send it to the cloned zygote
-  match zygote::call(request)?
-  {
-    FFIResponse::Ok(value) => Ok(value),
-    FFIResponse::Err(e) => Err(e.to_string()),
-  }
-}
-
+use crate::zygote::{FFIRequest};
 // =================================================================================================
 
 /// Maps a Value variant to its corresponding libffi C ABI type(s).
@@ -310,7 +277,7 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 // =================================================================================================
 
 /// Dispatches an FFI request inside the zygote clone to the appropriate handler.
-pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
+pub(super) fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> Result<Value, FFIError>
 {
   match request
   {
@@ -351,7 +318,7 @@ pub fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -
 /// performs `dlopen` of a specific library and calls the function through libffi;
 /// 
 /// is called once per request, after which the worker terminates.
-pub fn executeCall(
+pub(super) fn executeCall(
   libraryPath: String,
   functionName: String,
   args: Vec<Value>,

@@ -39,11 +39,11 @@ use crate::worker::executeFFI;
 
 /// Hidden startup flag: if it is the first argument — 
 /// this is not the runtime, but the zygote process.
-pub const ZygoteFlag: &str = "__zygote";
+pub(super) const ZygoteFlag: &str = "__zygote";
 
 /// Request for FFI execution, sent entirely to the zygote
 #[derive(Serialize, Deserialize)]
-pub enum FFIRequest
+pub(super) enum FFIRequest
 {
   /// Calls a function from a dynamic library with the given arguments and expected return type.
   Call { libraryPath: String, functionName: String, args: Vec<Value>, resultType: Type },
@@ -61,7 +61,7 @@ pub enum FFIRequest
 
 /// Response to the request with the execution result or error
 #[derive(Serialize, Deserialize)]
-pub enum FFIResponse
+pub(super) enum FFIResponse
 {
   /// Successful execution with the returned value.
   Ok(Value),
@@ -130,7 +130,7 @@ impl ClonedZygote
   }
 
   /// FFI call inside a specific clone
-  pub fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
+  pub(super) fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
   {
     let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
     let responseBytes: Vec<u8> = sendAndReceive(&mut self.socket, &bytes)
@@ -335,22 +335,6 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 }
 
 // =================================================================================================
-
-/// Called from worker — callExternal(); There will be only one attempt.
-pub fn call(request: FFIRequest) -> Result<FFIResponse, String>
-{
-  let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
-    .ok_or_else(|| "Zygote not initialized".to_string())?;
-  let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
-    .map_err(|_| "Zygote mutex poisoned".to_string())?;
-
-  let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
-  let responseBytes: Vec<u8> = sendAndReceive(&mut guard.socket, &bytes)
-    .map_err(|e| e.to_string())?;
-  drop(guard);
-
-  decode(&responseBytes).map_err(|e| e.to_string())
-}
 
 /// Sends a message through the socket and waits for a response.
 pub(super) fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Result<Vec<u8>>
