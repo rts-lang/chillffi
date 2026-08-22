@@ -25,7 +25,8 @@ pub struct ScopeGuard
 impl ScopeGuard
 {
   #[doc(hidden)]
-  pub fn new() -> Self
+  #[inline(always)]
+  pub const fn new() -> Self
   {
     Self { inner: UnsafeCell::new(None) }
   }
@@ -43,7 +44,8 @@ pub struct Scope<'g>
 impl<'g> Scope<'g>
 {
   #[doc(hidden)]
-  pub fn new(guard: &'g ScopeGuard) -> Self
+  #[inline(always)]
+  pub const fn new(guard: &'g ScopeGuard) -> Self
   {
     Self { guard }
   }
@@ -68,6 +70,7 @@ impl<'g> Scope<'g>
   }
 
   /// Frees memory previously obtained via `alloc` (or a C-side allocator).
+  #[inline]
   pub fn free(pointer: usize) -> Result<(), FFIError>
   {
     sendRawRequest(FFIRequest::Free { pointer })?;
@@ -75,12 +78,14 @@ impl<'g> Scope<'g>
   }
 
   /// Reads `length` bytes at `pointer` from the clone's memory.
+  #[inline]
   pub fn readMemory(pointer: usize, length: usize) -> Result<Value, FFIError>
   {
     sendRawRequest(FFIRequest::ReadMemory { pointer, length })
   }
 
   /// Writes data from `Value` into the clone's memory at `pointer`.
+  #[inline]
   pub fn writeMemory(pointer: usize, value: Value) -> Result<(), FFIError>
   {
     sendRawRequest(FFIRequest::WriteMemory { pointer, value })?;

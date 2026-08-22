@@ -31,7 +31,7 @@ pub struct AllocatedMemory<'g>
 impl<'g> AllocatedMemory<'g>
 {
   /// Creates a new wrapper for a raw zygote allocation.
-  pub(super) fn new(address: usize, length: usize) -> Self 
+  pub(super) const fn new(address: usize, length: usize) -> Self 
   {
     Self {
       address,
@@ -41,12 +41,12 @@ impl<'g> AllocatedMemory<'g>
   }
 
   /// Returns the raw memory address of the allocation.
-  pub fn address(&self) -> usize { self.address }
+  pub const fn address(&self) -> usize { self.address }
   /// Returns the size of the allocated memory block in bytes.
-  pub fn length(&self) -> usize { self.length }
+  pub const fn length(&self) -> usize { self.length }
 
   /// Wraps the address into a Value::Pointer for FFI calls.
-  pub fn asPointer(&self) -> Value {
+  pub const fn asPointer(&self) -> Value {
     Value::Pointer(self.address)
   }
 

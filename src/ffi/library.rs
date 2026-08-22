@@ -16,24 +16,28 @@ static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
 static RegisteredLibraries: OnceLock<Mutex<FxHashMap<usize, String>>> = OnceLock::new();
 
 /// Returns the next unique library identifier.
+#[inline(always)]
 fn nextLibraryId() -> usize
 {
   NextLibraryID.fetch_add(1, Ordering::SeqCst)
 }
 
 /// Returns the global registry of registered libraries.
+#[inline(always)]
 fn getRegistry() -> &'static Mutex<FxHashMap<usize, String>>
 {
   RegisteredLibraries.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
 /// Acquires the lock on the global library registry, returning the mutex guard.
+#[inline]
 fn lockRegistry() -> MutexGuard<'static, FxHashMap<usize, String>>
 {
   getRegistry().lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Adds a library to the registry by its identifier.
+#[inline]
 fn registerLibrary(id: usize, path: &str) -> ()
 {
   let mut registry: MutexGuard<FxHashMap<usize, String>> = lockRegistry();
@@ -41,6 +45,7 @@ fn registerLibrary(id: usize, path: &str) -> ()
 }
 
 /// Removes a library from the registry by its identifier.
+#[inline]
 fn unregisterLibrary(id: usize) -> ()
 {
   let mut registry: MutexGuard<FxHashMap<usize, String>> = lockRegistry();
@@ -119,7 +124,8 @@ pub struct __Library<const Allowed: bool = false>
 impl<const Allowed: bool> __Library<Allowed>
 {
   /// Returns the library identifier
-  pub fn id(&self) -> usize
+  #[inline(always)]
+  pub const fn id(&self) -> usize
   {
     self.libraryId
   }

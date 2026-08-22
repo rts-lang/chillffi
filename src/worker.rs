@@ -9,6 +9,7 @@ use crate::zygote::{FFIRequest};
 // =================================================================================================
 
 /// Maps a Value variant to its corresponding libffi C ABI type(s).
+#[inline]
 fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
 {
   match val
@@ -37,6 +38,7 @@ impl From<&Type> for libffi::middle::Type
 {
   /// Specifies the return value type so that libffi knows
   /// how many bytes to read after the call.
+  #[inline]
   fn from(t: &Type) -> Self 
   {
     match t 
@@ -199,6 +201,7 @@ fn prepareFFIArgs<'a>(
 
 /// Calls the C function by pointer
 /// and wraps the obtained raw result back into the Value enum.
+#[inline]
 fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &Type) -> Value 
 {
   match ffiResultType 
@@ -268,6 +271,7 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
 }
 
 /// Safely downcasts a boxed storage entry to a concrete reference type.
+#[inline]
 fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 {
   entry.downcast_ref::<T>()
@@ -318,7 +322,7 @@ pub(super) fn executeFFI(request: FFIRequest, cache: &mut FxHashMap<String, Libr
 /// performs `dlopen` of a specific library and calls the function through libffi;
 /// 
 /// is called once per request, after which the worker terminates.
-pub(super) fn executeCall(
+fn executeCall(
   libraryPath: String,
   functionName: String,
   args: Vec<Value>,

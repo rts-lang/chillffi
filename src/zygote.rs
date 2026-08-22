@@ -111,7 +111,7 @@ impl ClonedZygote
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
       .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Zygote not initialized"))?;
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
-      .map_err(|_| io::Error::new(io::ErrorKind::Other, "Zygote mutex poisoned"))?;
+      .map_err(|_| io::Error::other("Zygote mutex poisoned"))?;
 
     // Sends a signal to create a clone
     writeMessage(&mut guard.socket, &[1u8])?;

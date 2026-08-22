@@ -118,6 +118,7 @@ path = "examples/simple.rs"
 unused_unit = "allow"
 option_if_let_else = "allow"
 collapsible_if = "allow"
+too_long_first_doc_paragraph = "allow"
 nursery = { level = "warn", priority = -1 } # At the very bottom
 
 # ======================================================================================================================

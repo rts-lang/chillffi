@@ -29,7 +29,9 @@
 //! # Quick start
 //!
 //! ```no_run
-//! # use chillffi::ffi::{Library, Value, Type};
+//! use chillffi::ffi::value::{Type, Value};
+//! use chillffi::ffi;
+//! 
 //! fn main() -> ()
 //! {
 //!   // Perform an FFI call inside an isolated context using a macro
@@ -65,7 +67,11 @@
 //! and [`AllocatedMemory`](crate::ffi::allocatedMemory::AllocatedMemory):
 //!
 //! ```no_run
-//! # use chillffi::ffi::{Library, Value, Type, AllocatedMemory};
+//! use chillffi::ffi::allocatedMemory::{AllocatedMemory};
+//! use chillffi::ffi::value::{Type, Value};
+//! use chillffi::ffi::errors::FFIError;
+//! use chillffi::ffi;
+//! 
 //! fn main() -> ()
 //! {
 //!   // clock_gettime(CLOCK_REALTIME, &timespec) — struct out-param via Alloc/ReadMemory,
