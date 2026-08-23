@@ -1,11 +1,11 @@
+use parking_lot::RwLock;
 use std::path::PathBuf;
-use std::sync::RwLock;
 use std::sync::OnceLock;
 // =================================================================================================
 
 /// todo desc
 #[derive(Default)]
-pub struct PathResolver 
+pub struct PathResolver
 {
   /// todo desc
   dirs: Vec<PathBuf>
@@ -39,7 +39,7 @@ static GlobalPaths: OnceLock<RwLock<PathResolver>> = OnceLock::new();
 pub fn addGlobalSearchPath(path: impl Into<PathBuf>) -> ()
 {
   GlobalPaths.get_or_init(|| RwLock::new(PathResolver::default()))
-    .write().unwrap_or_else(|p| p.into_inner())
+    .write()
     .addPath(path);
 }
 
@@ -47,10 +47,10 @@ pub fn addGlobalSearchPath(path: impl Into<PathBuf>) -> ()
 pub(super) fn resolveGlobal(name: &str) -> Option<String>
 {
   GlobalPaths.get()?
-    .read().unwrap_or_else(|p| p.into_inner())
+    .read()
     .resolve(name)
 }
 
 // =================================================================================================
 
-// todo tests
+// todo tests простые. реальный path проверяется в example

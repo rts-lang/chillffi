@@ -25,6 +25,7 @@ struct HeavyStack
 #[doc(hidden)]
 pub struct ScopeGuard
 {
+  /// todo desc
   inner: UnsafeCell<Option<HeavyStack>>,
 }
 
