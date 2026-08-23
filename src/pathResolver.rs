@@ -53,4 +53,64 @@ pub(super) fn resolveGlobal(name: &str) -> Option<String>
 
 // =================================================================================================
 
-// todo tests простые. реальный path проверяется в example
+#[cfg(test)]
+mod tests
+{
+  use super::*;
+  use std::fs::File;
+  use std::env::temp_dir;
+  // ===============================================================================================
+
+  /// todo desc
+  #[test]
+  fn ignoresPathWithSlash() -> ()
+  {
+    let resolver: PathResolver = PathResolver::default();
+    assert_eq!(resolver.resolve("foo/bar.so"), None);
+  }
+
+  /// todo desc
+  #[test]
+  fn returnsNoneWhenNotFound() -> ()
+  {
+    let mut resolver: PathResolver = PathResolver::default();
+    resolver.addPath("/nonexistent/dir");
+    assert_eq!(resolver.resolve("libNope.so"), None);
+  }
+
+  /// todo desc
+  #[test]
+  fn findsExistingFile() -> ()
+  {
+    let dir: PathBuf = temp_dir();
+    let fileName: &str = "chillffiTestResolve.so";
+    File::create(dir.join(fileName)).unwrap();
+
+    let mut resolver: PathResolver = PathResolver::default();
+    resolver.addPath(&dir);
+
+    let resolved: String = resolver.resolve(fileName).expect("should find file");
+    assert!(resolved.ends_with(fileName));
+
+    std::fs::remove_file(dir.join(fileName)).unwrap();
+  }
+
+  /// todo desc
+  #[test]
+  fn globalRoundtrip() -> ()
+  {
+    let dir: PathBuf = temp_dir();
+    let fileName: &str = "chillffiTestGlobal.so";
+    File::create(dir.join(fileName)).unwrap();
+
+    addGlobalSearchPath(&dir);
+    let resolved: String = resolveGlobal(fileName).expect("should find via global");
+    assert!(resolved.ends_with(fileName));
+
+    std::fs::remove_file(dir.join(fileName)).unwrap();
+  }
+
+  // ===============================================================================================
+}
+
+// =================================================================================================
