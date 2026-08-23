@@ -1,3 +1,5 @@
+use crate::pathResolver::resolveGlobal;
+use crate::ffi::scope;
 use std::cell::RefMut;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
@@ -156,10 +158,13 @@ impl __Library<true>
   /// Loads the library and registers it for further calls.
   pub fn load(libraryPath: &str) -> Result<Self, FFIError>
   {
+    let resolved: String = scope::resolveViaScope(libraryPath)
+      .or_else(|| resolveGlobal(libraryPath))
+      .unwrap_or_else(|| libraryPath.to_string());
+
     let libraryId: usize = nextLibraryId();
-    let ownedPath: String = String::from(libraryPath);
-    registerLibrary(libraryId, &ownedPath);
-    Ok(Self{ libraryId, libraryPath: ownedPath })
+    registerLibrary(libraryId, &resolved);
+    Ok(Self{ libraryId, libraryPath: resolved })
   }
   
   /// Unloads the library and removes it from the registry;

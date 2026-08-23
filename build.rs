@@ -1,0 +1,53 @@
+use std::process::ExitStatus;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+// =================================================================================================
+
+fn main() -> ()
+{
+  let examplesDir: &Path = Path::new("examples");
+  if examplesDir.exists() { compileDir(examplesDir); }
+}
+
+fn compileDir(dir: &Path) -> ()
+{
+  let Ok(entries) = fs::read_dir(dir) else { return };
+
+  for entry in entries.flatten()
+  {
+    let path: PathBuf = entry.path();
+
+    if path.is_dir() { compileDir(&path); continue; }
+    if path.extension().and_then(|e| e.to_str()) != Some("c") { continue; }
+
+    println!("cargo:rerun-if-changed={}", path.display());
+
+    let stem: &str = path.file_stem().unwrap().to_str().unwrap();
+    let output: PathBuf = path.with_file_name(format!("lib{}.so", stem));
+
+    if isFresh(&path, &output) { continue; }
+
+    let compiler: String = env::var("CC").unwrap_or_else(|_| "cc".into());
+    let status: std::io::Result<ExitStatus> = Command::new(compiler)
+      .args(["-shared", "-fPIC", "-o"])
+      .arg(&output)
+      .arg(&path)
+      .status();
+
+    match status {
+      Ok(s) if s.success() => {}
+      _ => panic!("failed to compile {}", path.display()),
+    }
+  }
+}
+
+fn isFresh(source: &Path, output: &Path) -> bool
+{
+  let (Ok(srcMeta), Ok(outMeta)) = (fs::metadata(source), fs::metadata(output)) else { return false };
+  let (Ok(srcTime), Ok(outTime)) = (srcMeta.modified(), outMeta.modified()) else { return false };
+  outTime >= srcTime
+}
+
+// =================================================================================================

@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::path::PathBuf;
+use crate::pathResolver::PathResolver;
 use std::cell::UnsafeCell;
 use crate::ffi::allocatedMemory::AllocatedMemory;
 use crate::ffi::errors::FFIError;
@@ -7,10 +10,13 @@ use crate::zygote::FFIRequest;
 // =================================================================================================
 
 /// Heavy stack or arena for temporary allocations within an ffi!{} scope.
-struct HeavyStack
+struct HeavyStack 
 {
-  // Allocated stack or arena
+  /// todo desc
+  pathResolver: Option<PathResolver>
 }
+
+// =================================================================================================
 
 /// Owner of HeavyStack. Created by the ffi!{} macro once per block (only if
 /// the user requested Scope), lives and dies strictly with this block.
@@ -32,6 +38,21 @@ impl ScopeGuard
   }
 }
 
+thread_local! {
+  static ScopeStack: RefCell<Vec<*const ScopeGuard>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(super) fn resolveViaScope(name: &str) -> Option<String>
+{
+  ScopeStack.with(|s| {
+    let ptr: *const ScopeGuard = *s.borrow().last()?;
+    let slot: &Option<HeavyStack> = unsafe { &*(*ptr).inner.get() };
+    slot.as_ref()?.pathResolver.as_ref()?.resolve(name)
+  })
+}
+
+// =================================================================================================
+
 /// A handle to the ScopeGuard of the current ffi!{}-block — borrows it for 'g.
 /// 
 /// That is precisely why AllocatedMemory<'g> cannot leave the block: the ScopeGuard,
@@ -43,12 +64,30 @@ pub struct Scope<'g>
 
 impl<'g> Scope<'g>
 {
+  // ===============================================================================================
+  
   #[doc(hidden)]
   #[inline(always)]
-  pub const fn new(guard: &'g ScopeGuard) -> Self
+  pub fn new(guard: &'g ScopeGuard) -> Self
   {
+    ScopeStack.with(|s| s.borrow_mut().push(guard as *const ScopeGuard));
     Self { guard }
   }
+
+  // ===============================================================================================
+  
+  /// todo desc
+  pub fn addSearchPath(&self, path: impl Into<PathBuf>) -> ()
+  {
+    unsafe {
+      let slot: &mut Option<HeavyStack> = &mut *self.guard.inner.get();
+      slot.get_or_insert_with(|| HeavyStack{ pathResolver: None })
+        .pathResolver.get_or_insert_with(PathResolver::default)
+        .addPath(path);
+    }
+  }
+
+  // ===============================================================================================
 
   /// Allocates `length` bytes in the clone's heap.
   pub fn alloc(&self, length: usize) -> Result<AllocatedMemory<'g>, FFIError>
@@ -58,7 +97,9 @@ impl<'g> Scope<'g>
 
       // Initialization of the heavy stack happens only on the first call to alloc()
       if stack.is_none() {
-        *stack = Some(HeavyStack{});
+        *stack = Some(HeavyStack{
+          pathResolver: None
+        });
       }
     }
 
@@ -91,6 +132,13 @@ impl<'g> Scope<'g>
     sendRawRequest(FFIRequest::WriteMemory { pointer, value })?;
     Ok(())
   }
+
+  // ===============================================================================================
+}
+
+impl<'g> Drop for Scope<'g>
+{
+  fn drop(&mut self) -> () { ScopeStack.with(|s| { s.borrow_mut().pop(); }); }
 }
 
 // =================================================================================================
