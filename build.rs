@@ -7,10 +7,12 @@ use std::process::Command;
 
 fn main() -> ()
 {
+  // Compiles C sources within the examples directory.
   let examplesDir: &Path = Path::new("examples");
   if examplesDir.exists() { compileDir(examplesDir); }
 }
 
+/// Recursively compiles C source files into shared libraries.
 fn compileDir(dir: &Path) -> ()
 {
   let Ok(entries) = fs::read_dir(dir) else { return };
@@ -19,9 +21,11 @@ fn compileDir(dir: &Path) -> ()
   {
     let path: PathBuf = entry.path();
 
+    // Traverse subdirectories.
     if path.is_dir() { compileDir(&path); continue; }
     if path.extension().and_then(|e| e.to_str()) != Some("c") { continue; }
 
+    // Notify Cargo to rebuild on source modification.
     println!("cargo:rerun-if-changed={}", path.display());
 
     let stem: &str = path.file_stem().unwrap().to_str().unwrap();
@@ -29,6 +33,7 @@ fn compileDir(dir: &Path) -> ()
 
     if isFresh(&path, &output) { continue; }
 
+    // Execute compiler to generate a shared object.
     let compiler: String = env::var("CC").unwrap_or_else(|_| "cc".into());
     let status: std::io::Result<ExitStatus> = Command::new(compiler)
       .args(["-shared", "-fPIC", "-o"])
@@ -43,6 +48,7 @@ fn compileDir(dir: &Path) -> ()
   }
 }
 
+/// Validates if the output binary is newer than the source file.
 fn isFresh(source: &Path, output: &Path) -> bool
 {
   let (Ok(srcMeta), Ok(outMeta)) = (fs::metadata(source), fs::metadata(output)) else { return false };

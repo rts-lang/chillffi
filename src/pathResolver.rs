@@ -3,23 +3,25 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 // =================================================================================================
 
-/// todo desc
+/// A resolver that searches for files in a list of directories.
 #[derive(Default)]
 pub struct PathResolver
 {
-  /// todo desc
+  /// List of directories to search for files.
   dirs: Vec<PathBuf>
 }
 
 impl PathResolver
 {
-  /// todo desc
+  /// Adds a directory to the search path.
   pub fn addPath(&mut self, path: impl Into<PathBuf>) -> ()
   {
     self.dirs.push(path.into());
   }
 
-  /// todo desc
+  /// Resolves a file name by searching in the registered directories. 
+  /// 
+  /// Returns None if the name contains a slash or the file is not found.
   pub fn resolve(&self, name: &str) -> Option<String>
   {
     if name.contains('/') { return None; }
@@ -32,10 +34,10 @@ impl PathResolver
 
 // =================================================================================================
 
-/// todo desc
+/// Global singleton holding the shared path resolver.
 static GlobalPaths: OnceLock<RwLock<PathResolver>> = OnceLock::new();
 
-/// todo desc
+/// Adds a directory to the global search path, initializing the resolver if not already present.
 pub fn addGlobalSearchPath(path: impl Into<PathBuf>) -> ()
 {
   GlobalPaths.get_or_init(|| RwLock::new(PathResolver::default()))
@@ -43,7 +45,9 @@ pub fn addGlobalSearchPath(path: impl Into<PathBuf>) -> ()
     .addPath(path);
 }
 
-/// todo desc
+/// Resolves a file name using the global search path. 
+/// 
+/// Returns None if the global resolver is not initialized or the file is not found.
 pub(super) fn resolveGlobal(name: &str) -> Option<String>
 {
   GlobalPaths.get()?
@@ -61,7 +65,7 @@ mod tests
   use std::env::temp_dir;
   // ===============================================================================================
 
-  /// todo desc
+  /// Checks that paths containing a slash are ignored.
   #[test]
   fn ignoresPathWithSlash() -> ()
   {
@@ -69,7 +73,7 @@ mod tests
     assert_eq!(resolver.resolve("foo/bar.so"), None);
   }
 
-  /// todo desc
+  /// Checks that None is returned when the file is not found.
   #[test]
   fn returnsNoneWhenNotFound() -> ()
   {
@@ -78,7 +82,7 @@ mod tests
     assert_eq!(resolver.resolve("libNope.so"), None);
   }
 
-  /// todo desc
+  /// Checks finding an existing file in the registered directories.
   #[test]
   fn findsExistingFile() -> ()
   {
@@ -95,7 +99,7 @@ mod tests
     std::fs::remove_file(dir.join(fileName)).unwrap();
   }
 
-  /// todo desc
+  /// Checks resolving a file name via the global search path.
   #[test]
   fn globalRoundtrip() -> ()
   {

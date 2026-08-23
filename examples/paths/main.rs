@@ -10,7 +10,7 @@ fn main() -> ()
   testGlobalPath();
 }
 
-/// Путь с '/' — PathResolver не участвует, идёт напрямую в dlopen.
+/// A path with '/' — PathResolver is not involved; it goes directly to dlopen.
 fn testRawPath() -> ()
 {
   let result: Value = ffi!{
@@ -22,7 +22,7 @@ fn testRawPath() -> ()
   println!("ok: raw path");
 }
 
-/// Временный путь через scope — резолвится только внутри этого блока.
+/// Temporary path through scope — resolves only inside this block.
 fn testScopePath() -> ()
 {
   let result: Value = ffi!(|scope| {
@@ -35,7 +35,7 @@ fn testScopePath() -> ()
   println!("ok: scope path");
 }
 
-/// Глобальный путь — задан один раз, виден во всех последующих блоках.
+/// The global path — set once, visible in all subsequent blocks.
 fn testGlobalPath() -> ()
 {
   addGlobalSearchPath("examples/paths");

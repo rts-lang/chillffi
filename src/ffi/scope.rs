@@ -12,7 +12,7 @@ use crate::zygote::FFIRequest;
 /// Heavy stack or arena for temporary allocations within an ffi!{} scope.
 struct HeavyStack 
 {
-  /// todo desc
+  /// Local path resolver for the current scope.
   pathResolver: Option<PathResolver>
 }
 
@@ -25,8 +25,8 @@ struct HeavyStack
 #[doc(hidden)]
 pub struct ScopeGuard
 {
-  /// todo desc
-  inner: UnsafeCell<Option<HeavyStack>>,
+  /// Lazily initialized internal state of the scope.
+  inner: UnsafeCell<Option<HeavyStack>>
 }
 
 impl ScopeGuard
@@ -76,8 +76,8 @@ impl<'g> Scope<'g>
   }
 
   // ===============================================================================================
-  
-  /// todo desc
+
+  /// Adds a directory to the local search path of the scope.
   pub fn addSearchPath(&self, path: impl Into<PathBuf>) -> ()
   {
     unsafe {
