@@ -1,5 +1,6 @@
 use chillffi::ffi::value::{Value, Type};
 use chillffi::ffi::errors::FFIError;
+use chillffi::ffi::scope::Scope;
 use chillffi::callv;
 use chillffi::ffi;
 // =================================================================================================
@@ -26,10 +27,13 @@ fn main() -> ()
         let Value::Pointer(a) = args[0] else { panic!("a") };
         let Value::Pointer(b) = args[1] else { panic!("b") };
 
-        // Важно: a и b — адреса внутри клона (внутри mem).
-        // Колбек выполняется в клоне, поэтому разыменование безопасно.
-        let av = unsafe { *(a as *const i32) };
-        let bv = unsafe { *(b as *const i32) };
+        // a/b — адреса внутри клона. Колбэк исполняется в родителе,
+        // поэтому байты нужно забрать через IPC, а не разыменовывать напрямую.
+        let Ok(Value::RawString(aBytes)) = Scope::readMemory(a, 4) else { return Value::I32(0) };
+        let Ok(Value::RawString(bBytes)) = Scope::readMemory(b, 4) else { return Value::I32(0) };
+
+        let av = i32::from_ne_bytes(aBytes.try_into().unwrap());
+        let bv = i32::from_ne_bytes(bBytes.try_into().unwrap());
 
         Value::I32(av.cmp(&bv) as i32)
       },

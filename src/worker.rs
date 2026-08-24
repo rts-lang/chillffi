@@ -40,14 +40,14 @@ fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
   }
 }
 
-impl From<&Type> for libffi::middle::Type 
+impl From<&Type> for libffi::middle::Type
 {
   /// Specifies the return value type so that libffi knows
   /// how many bytes to read after the call.
   #[inline]
-  fn from(t: &Type) -> Self 
+  fn from(t: &Type) -> Self
   {
-    match t 
+    match t
     {
       Type::None => Self::void(),
       Type::U8 => Self::u8(),
@@ -71,7 +71,7 @@ impl From<&Type> for libffi::middle::Type
 /// Keeps the arguments in the storage buffer,
 /// so that they are not removed from memory during the C call,
 /// and collects pointers to them.
-/// 
+///
 /// # Memory Lifetime Constraint:
 /// All heap allocations for string buffers (`RawString`, `CString`, `String`) 
 /// are strictly temporary (transient) and guaranteed to be valid ONLY for the duration 
@@ -82,13 +82,14 @@ fn prepareFFIArgs<'a>(
   args: &'a [Value],
   storage: &'a mut Vec<Box<dyn Any>>,
   fd: RawFd,
+  cache: *mut FxHashMap<String, Library>,
 ) -> Result<Vec<Arg<'a>>, FFIError>
 {
   // Prepare storage for the values
   // that the arguments will reference.
-  for arg in args 
+  for arg in args
   {
-    match arg 
+    match arg
     {
       Value::U8(v) => storage.push(Box::new(*v)),
       Value::U16(v) => storage.push(Box::new(*v)),
@@ -132,10 +133,15 @@ fn prepareFFIArgs<'a>(
           argTypes: argTypes.clone(),
           returnType: returnType.clone(),
           fd,
+          cache,
         });
         let dataRef: &'static CallbackData = &*Box::leak(data);
         let closure: Closure = Closure::new(cif, callback_handler, dataRef);
-        let code_ptr: *mut c_void = closure.code_ptr() as *const _ as *mut c_void;
+        // code_ptr() возвращает &fn — сам указатель, а не его адрес.
+        // Разыменование обязательно: без него в C ABI улетает адрес поля
+        // Closure (Rust-куча), а не JIT-трамплин, который выделил libffi.
+        let codeAddr: usize = *closure.code_ptr() as usize;
+        let code_ptr: *mut c_void = codeAddr as *mut c_void;
         storage.push(Box::new((closure, code_ptr)));
       }
       Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
@@ -144,9 +150,9 @@ fn prepareFFIArgs<'a>(
 
   // Build the list of arguments for libffi
   let mut argsFfi: Vec<Arg<'a>> = Vec::with_capacity(args.len());
-  for (i, arg) in args.iter().enumerate() 
+  for (i, arg) in args.iter().enumerate()
   {
-    match arg 
+    match arg
     {
       Value::U8(_) => {
         let val: &u8 = downcastRef(&storage[i])?;
@@ -227,9 +233,9 @@ fn prepareFFIArgs<'a>(
 /// Calls the C function by pointer
 /// and wraps the obtained raw result back into the Value enum.
 #[inline]
-fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &Type) -> Value 
+fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &Type) -> Value
 {
-  match ffiResultType 
+  match ffiResultType
   {
     Type::None => {
       unsafe { cif.call::<()>(codePointer, argsFfi) };
@@ -287,8 +293,8 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
       let val: u8 = unsafe { cif.call::<u8>(codePointer, argsFfi) };
       Value::Bool(val != 0)
     }
-    Type::Pointer => 
-    { 
+    Type::Pointer =>
+    {
       let ptr: *mut c_void = unsafe { cif.call::<*mut c_void>(codePointer, argsFfi) };
       Value::Pointer(ptr as usize)
     }
@@ -309,7 +315,12 @@ struct CallbackData {
   id: u64,
   argTypes: Vec<Type>,
   returnType: Box<Type>,
-  fd: RawFd
+  fd: RawFd,
+  /// Raw pointer to the clone's library cache (owned by `cloneLoop`, alive
+  /// for the whole process). Needed so a nested request fired from inside
+  /// the callback closure (e.g. Scope::readMemory, or even another `call!`)
+  /// can be serviced by the same dispatcher the outer loop uses.
+  cache: *mut FxHashMap<String, Library>
 }
 
 fn build_cif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError> {
@@ -398,6 +409,21 @@ fn read_message_fd(fd: RawFd) -> std::io::Result<Vec<u8>> {
   Ok(buf)
 }
 
+/// Called synchronously by C (e.g. qsort's comparator) mid-call.
+///
+/// After sending `Invoke`, the parent's registered closure runs and *may
+/// itself issue ordinary FFI requests* (Scope::readMemory, another `call!`,
+/// etc.) before finally replying with `CallbackResult` — those requests
+/// arrive on this very fd and must be serviced right here, because the
+/// clone's own outer `cloneLoop` isn't reading the socket right now (it's
+/// blocked deeper in the stack, inside the C call that fired this callback).
+///
+/// No `panic!`/`.expect()` anywhere in this function: it's an `extern "C" fn`
+/// called from a foreign (C) stack frame, so a panic here cannot unwind and
+/// Rust aborts the whole process immediately — there's no such thing as a
+/// "clean" panic across this boundary. Every failure path returns instead,
+/// leaving `*ret` untouched (zeroed by libffi) and letting the outer call
+/// fail with a normal `FFIError` once the broken pipe is noticed upstream.
 unsafe extern "C" fn callback_handler(
   _cif: &libffi::low::ffi_cif,
   ret: &mut std::ffi::c_void,
@@ -411,17 +437,36 @@ unsafe extern "C" fn callback_handler(
   }
 
   let invoke: FFIResponse = FFIResponse::Invoke { id: userdata.id, args: rustArgs };
-  let bytes: Vec<u8> = encode(&invoke).expect("encode Invoke");
-  write_message_fd(userdata.fd, &bytes).expect("write Invoke");
+  let bytes: Vec<u8> = match encode(&invoke) { Ok(b) => b, Err(_) => return };
+  if write_message_fd(userdata.fd, &bytes).is_err() { return; }
 
-  let responseBytes: Vec<u8> = read_message_fd(userdata.fd).expect("read CallbackResult");
-  let response: FFIRequest = decode(&responseBytes).expect("decode CallbackResult");
+  loop
+  {
+    let responseBytes: Vec<u8> = match read_message_fd(userdata.fd) {
+      Ok(b) => b,
+      Err(_) => return
+    };
 
-  match response {
-    FFIRequest::CallbackResult { value } => {
-      write_ret(ret, value, &userdata.returnType);
+    match decode::<FFIRequest>(&responseBytes)
+    {
+      Ok(FFIRequest::CallbackResult { value }) => {
+        write_ret(ret, value, &userdata.returnType);
+        return;
+      }
+      Ok(nestedRequest) => {
+        // A genuine FFI request fired from inside the callback closure —
+        // service it with the same dispatcher the outer cloneLoop uses,
+        // then keep waiting for the next message.
+        let cache: &mut FxHashMap<String, Library> = unsafe { &mut *userdata.cache };
+        let response: FFIResponse = match executeFFI(nestedRequest, cache, userdata.fd) {
+          Ok(v) => FFIResponse::Ok(v),
+          Err(e) => FFIResponse::Err(e),
+        };
+        let responseBytes: Vec<u8> = match encode(&response) { Ok(b) => b, Err(_) => return };
+        if write_message_fd(userdata.fd, &responseBytes).is_err() { return; }
+      }
+      Err(_) => return
     }
-    _ => panic!("Expected CallbackResult, got {:?}", response),
   }
 }
 
@@ -527,7 +572,7 @@ fn executeCall(
   let mut storage: Vec<Box<dyn Any>> = Vec::with_capacity(args.len());
 
   // Build the list of arguments for libffi
-  let argsFfi: Vec<Arg> = prepareFFIArgs(&args, &mut storage, fd)?;
+  let argsFfi: Vec<Arg> = prepareFFIArgs(&args, &mut storage, fd, cache as *mut FxHashMap<String, Library>)?;
 
   // Function call
   let codePointer: CodePtr = CodePtr(functionPointer);
