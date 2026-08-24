@@ -103,7 +103,7 @@ pub enum Type
 // =================================================================================================
 
 /// Wrapper for a raw memory address.
-#[derive(Debug, Clone, Copy, PartialEq)] // todo тут нужны больше-меньше eq?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Pointer(pub usize);
 
 /// Bridges a concrete Rust primitive to its Value/Type tag.

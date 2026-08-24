@@ -17,7 +17,7 @@ fn testRawPath() -> ()
 {
   let result: Pointer = ffi!{
     let lib: Library = Library::load("./examples/paths/libprint.so")?;
-    Ok(call!(lib, "print", Value::String(b"raw path\n".to_vec()))?) // todo Можно ли как-то передать? Он наверное не поймет
+    Ok(call!(lib, "print", Value::String(b"raw path\n".to_vec()))?)
   }.expect("raw path failed");
 
   assert!(matches!(result, Pointer(0)));
