@@ -191,7 +191,7 @@ pub type __FFILibrary = __Library<true>;
 
 // =================================================================================================
 
-// todo desc
+/// Executes a function call from the loaded library and casts the result to the expected type.
 #[macro_export]
 macro_rules! call {
   ($lib:expr, $name:expr $(, $args:expr)* $(,)?) => {
@@ -199,7 +199,7 @@ macro_rules! call {
   };
 }
 
-// todo desc
+/// Executes a function call from the loaded library without expecting or typing a return value.
 #[macro_export]
 macro_rules! callv {
   ($lib:expr, $name:expr $(, $args:expr)* $(,)?) => {
@@ -207,7 +207,8 @@ macro_rules! callv {
   };
 }
 
-// todo Ветка под `let a = call!` т.е. типа нет.
+// Варианта с `let a = call!(` нет. Потому что ты либо void ждешь, либо указываешь тип.
+// Было бы грубо делать иное указание типа, если ты можешь это сделать сразу в `let a:`.
 
 // =================================================================================================
 

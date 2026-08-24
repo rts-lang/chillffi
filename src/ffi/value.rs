@@ -102,7 +102,7 @@ pub enum Type
 
 // =================================================================================================
 
-/// todo desc
+/// Wrapper for a raw memory address.
 #[derive(Debug, Clone, Copy, PartialEq)] // todo тут нужны больше-меньше eq?
 pub struct Pointer(pub usize);
 
@@ -110,14 +110,14 @@ pub struct Pointer(pub usize);
 pub trait Primitive: Sized
 {
   const TypeTag: Type;
-  
-  /// todo desc
+
+  /// Converts a dynamic `Value` into a concrete primitive type.
   fn fromValue(value: Value) -> Result<Self, FFIError>;
-  /// todo desc
+  /// Converts this primitive into a dynamic `Value`.
   fn toValue(self) -> Value;
 }
 
-/// todo desc
+/// Объявляет связку примитива и `Value` типа.
 macro_rules! implFFIPrimitive
 {
   ($rustType:ty, $variant:ident) =>
@@ -126,7 +126,7 @@ macro_rules! implFFIPrimitive
     {
       const TypeTag: Type = Type::$variant;
 
-      /// todo desc
+      /// Parses the specific `Value` variant into this primitive type.
       fn fromValue(value: Value) -> Result<Self, FFIError>
       {
         match value {
@@ -135,13 +135,13 @@ macro_rules! implFFIPrimitive
         }
       }
 
-      /// todo desc
+      /// Wraps this primitive value into its corresponding `Value` enum variant.
       fn toValue(self) -> Value { Value::$variant(self) }
     }
     
     impl From<$rustType> for Value
     {
-      /// todo desc
+      /// Converts the raw primitive into a dynamic `Value`.
       fn from(v: $rustType) -> Self { Value::$variant(v) }
     }
   };
@@ -166,7 +166,7 @@ impl Primitive for Pointer
 {
   const TypeTag: Type = Type::Pointer;
 
-  /// todo desc
+  /// Extracts the address from a `Value::Pointer`.
   fn fromValue(value: Value) -> Result<Self, FFIError>
   {
     match value {
@@ -175,7 +175,7 @@ impl Primitive for Pointer
     }
   }
 
-  /// todo desc
+  /// Converts this `Pointer` wrapper into a `Value::Pointer`.
   fn toValue(self) -> Value { Value::Pointer(self.0) }
 }
 
@@ -183,7 +183,7 @@ impl Primitive for ()
 {
   const TypeTag: Type = Type::None;
 
-  /// todo desc
+  /// Validates and converts a `Value::None` into a Rust unit type `()`.
   fn fromValue(value: Value) -> Result<Self, FFIError>
   {
     match value {
@@ -192,19 +192,19 @@ impl Primitive for ()
     }
   }
 
-  /// todo desc
+  /// Converts a unit type `()` into a `Value::None`.
   fn toValue(self) -> Value { Value::None }
 }
 
 impl From<Pointer> for usize
 {
-  /// todo desc
+  /// Extracts the underlying `usize` memory address from a `Pointer`.
   fn from(p: Pointer) -> Self { p.0 }
 }
 
 impl From<Pointer> for Value
 {
-  /// todo desc
+  /// Converts a `Pointer` directly into a `Value::Pointer` variant.
   fn from(p: Pointer) -> Self { Value::Pointer(p.0) }
 }
 
