@@ -1,3 +1,7 @@
+use crate::ffi::value::Type;
+use crate::ffi::callback;
+use std::sync::atomic::Ordering;
+use std::sync::atomic::AtomicU64;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use crate::pathResolver::PathResolver;
@@ -132,6 +136,18 @@ impl<'g> Scope<'g>
   {
     sendRawRequest(FFIRequest::WriteMemory { pointer: pointer.into(), value })?;
     Ok(())
+  }
+
+  // ===============================================================================================
+
+  pub fn callback<F>(&self, argTypes: Vec<Type>, returnType: Type, f: F) -> Value
+  where
+    F: Fn(Vec<Value>) -> Value + Send + 'static,
+  {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    callback::register(id, Box::new(f));
+    Value::Function { id, argTypes, returnType: Box::new(returnType) }
   }
 
   // ===============================================================================================

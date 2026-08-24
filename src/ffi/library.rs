@@ -73,6 +73,9 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),
       Ok(FFIResponse::Err(err)) => Err(err),
+      Ok(FFIResponse::Invoke { .. }) => {
+        unreachable!("Invoke must be handled inside ClonedZygote::call loop")
+      }
       Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
     }
   })

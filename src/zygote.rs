@@ -1,3 +1,4 @@
+use crate::ffi::callback;
 use crate::ffi::errors::FFIError;
 use std::cell::RefCell;
 use std::env;
@@ -42,7 +43,7 @@ use crate::worker::executeFFI;
 pub(super) const ZygoteFlag: &str = "__zygote";
 
 /// Request for FFI execution, sent entirely to the zygote
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(super) enum FFIRequest
 {
   /// Calls a function from a dynamic library with the given arguments and expected return type.
@@ -56,7 +57,11 @@ pub(super) enum FFIRequest
   /// Reads a raw memory block of the given length starting at the specified pointer.
   ReadMemory { pointer: usize, length: usize },
   /// Writes a value to the specified address in the zygote memory.
-  WriteMemory { pointer: usize, value: Value }
+  WriteMemory { pointer: usize, value: Value },
+
+  /// Answer to a nested `FFIResponse::Invoke`, sent by the parent back to
+  /// the clone. Never sent as a fresh top-level request.
+  CallbackResult { value: Value }
 }
 
 /// Response to the request with the execution result or error
@@ -66,7 +71,13 @@ pub(super) enum FFIResponse
   /// Successful execution with the returned value.
   Ok(Value),
   /// Execution failed with the corresponding error.
-  Err(FFIError)
+  Err(FFIError),
+
+  /// Sent by the clone mid-call — a C callback (e.g. a qsort comparator)
+  /// fired and needs the parent to run the corresponding Rust closure.
+  /// Not a final answer: the parent must reply with
+  /// `FFIRequest::CallbackResult` and keep waiting for the real response.
+  Invoke { id: u64, args: Vec<Value> }
 }
 
 /// Controls the zygote process and 
@@ -133,10 +144,26 @@ impl ClonedZygote
   pub(super) fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
   {
     let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
-    let responseBytes: Vec<u8> = sendAndReceive(&mut self.socket, &bytes)
-      .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+    writeMessage(&mut self.socket, &bytes).map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
 
-    decode(&responseBytes).map_err(|e| e.to_string())
+    loop
+    {
+      let responseBytes: Vec<u8> = readMessage(&mut self.socket)
+        .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+      let response: FFIResponse = decode(&responseBytes).map_err(|e| e.to_string())?;
+
+      match response
+      {
+        FFIResponse::Invoke { id, args } =>
+        {
+          let result: Value = callback::invoke(id, args);
+          let answer: Vec<u8> = encode(&FFIRequest::CallbackResult { value: result }).map_err(|e| e.to_string())?;
+          writeMessage(&mut self.socket, &answer).map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+          // Not the final answer yet — loop back for the next message.
+        }
+        finalResponse => return Ok(finalResponse)
+      }
+    }
   }
 }
 
@@ -295,6 +322,7 @@ fn zygoteLoop(mut socket: UnixStream) -> !
 fn cloneLoop(mut socket: UnixStream) -> ! 
 {
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
+  let fd: RawFd = socket.as_raw_fd();
   
   loop 
   {
@@ -306,7 +334,7 @@ fn cloneLoop(mut socket: UnixStream) -> !
         std::process::exit(0)
     };
 
-    let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
+    let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache, fd);
     let encodedResponse: Vec<u8> = match encode(&response) {
       Ok(bytes) => bytes,
       Err(_) => std::process::exit(1),
@@ -321,11 +349,11 @@ fn cloneLoop(mut socket: UnixStream) -> !
 /// Handles an incoming request and performs an FFI operation using the library cache.
 ///
 /// Returns the execution result or an error description.
-fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) -> FFIResponse
+fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>, fd: RawFd) -> FFIResponse
 {
   match decode::<FFIRequest>(requestBytes)
   {
-    Ok(request) => match executeFFI(request, cache)
+    Ok(request) => match executeFFI(request, cache, fd)
     {
       Ok(value) => FFIResponse::Ok(value),
       Err(e) => FFIResponse::Err(e)
@@ -335,13 +363,6 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 }
 
 // =================================================================================================
-
-/// Sends a message through the socket and waits for a response.
-pub(super) fn sendAndReceive(socket: &mut UnixStream, bytes: &[u8]) -> io::Result<Vec<u8>>
-{
-  writeMessage(socket, bytes)?;
-  readMessage(socket)
-}
 
 /// Supervisor: blocks on the death of the current zygote (waitpid) and recreates it.
 /// 
