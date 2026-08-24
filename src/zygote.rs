@@ -146,7 +146,8 @@ impl ClonedZygote
     let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
     writeMessage(&mut self.socket, &bytes).map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
 
-    loop
+    loop // todo Мне не нравится этот цикл, потому что он находится в запросе. Если это воскрешение
+         //   - его следует незамедлительно удалить отсюда.
     {
       let responseBytes: Vec<u8> = readMessage(&mut self.socket)
         .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;

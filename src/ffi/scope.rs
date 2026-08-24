@@ -144,8 +144,8 @@ impl<'g> Scope<'g>
   where
     F: Fn(Vec<Value>) -> Value + Send + 'static,
   {
-    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-    let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    static nextID: AtomicU64 = AtomicU64::new(1);
+    let id: u64 = nextID.fetch_add(1, Ordering::SeqCst);
     callback::register(id, Box::new(f));
     Value::Function { id, argTypes, returnType: Box::new(returnType) }
   }

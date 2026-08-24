@@ -3,24 +3,25 @@ use chillffi::ffi::errors::FFIError;
 use chillffi::ffi::scope::Scope;
 use chillffi::callv;
 use chillffi::ffi;
+use chillffi::ffi::allocatedMemory::AllocatedMemory;
 // =================================================================================================
 
 /// todo desc
 fn main() -> ()
 {
-  let sorted_bytes: Vec<u8> = ffi!(|scope| {
+  let sortedBytes: Vec<u8> = ffi!(|scope| {
     let libc = Library::load("libc.so.6")?;
 
     // 1. Выделяем память в клоне, кладём туда [3,1,4,1,5]
-    let mem = scope.alloc(5 * 4)?; // 5 i32
+    let mem: AllocatedMemory = scope.alloc(5 * 4)?; // 5 i32
     let data: [i32; 5] = [3, 1, 4, 1, 5];
-    let raw = unsafe {
+    let raw: &[u8] = unsafe {
       std::slice::from_raw_parts(data.as_ptr() as *const u8, 20)
     };
     mem.write(Value::RawString(raw.to_vec()))?;
 
     // 2. Создаём колбек compar(const void*, const void*) -> int
-    let compar = scope.callback(
+    let compar: Value = scope.callback(
       vec![Type::Pointer, Type::Pointer],
       Type::I32,
       |args| {
@@ -32,8 +33,8 @@ fn main() -> ()
         let Ok(Value::RawString(aBytes)) = Scope::readMemory(a, 4) else { return Value::I32(0) };
         let Ok(Value::RawString(bBytes)) = Scope::readMemory(b, 4) else { return Value::I32(0) };
 
-        let av = i32::from_ne_bytes(aBytes.try_into().unwrap());
-        let bv = i32::from_ne_bytes(bBytes.try_into().unwrap());
+        let av: i32 = i32::from_ne_bytes(aBytes.try_into().unwrap());
+        let bv: i32 = i32::from_ne_bytes(bBytes.try_into().unwrap());
 
         Value::I32(av.cmp(&bv) as i32)
       },
@@ -41,10 +42,10 @@ fn main() -> ()
 
     // 3. Вызываем qsort(base, nmemb, size, compar)
     callv!(libc, "qsort",
-      mem.asPointer(),          // void *base
-      5 as usize,               // size_t nmemb
-      4 as usize,               // size_t size
-      compar                    // int (*compar)(const void*, const void*)
+      mem.asPointer(), // void *base
+      5 as usize,      // size_t nmemb
+      4 as usize,      // size_t size
+      compar           // int (*compar)(const void*, const void*)
     )?;
 
     // 4. Читаем отсортированный результат обратно в родителя
@@ -55,7 +56,7 @@ fn main() -> ()
   }).expect("qsort failed");
 
   // Проверяем
-  let sorted: Vec<i32> = sorted_bytes.chunks_exact(4)
+  let sorted: Vec<i32> = sortedBytes.chunks_exact(4)
     .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
     .collect();
 

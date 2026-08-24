@@ -78,7 +78,6 @@ pub enum Value
   /// pointer beyond that block is undefined behavior, exactly as with a
   /// dangling `Pointer`.
   Function { id: u64, argTypes: Vec<Type>, returnType: Box<Type> }
-
 }
 
 // =================================================================================================

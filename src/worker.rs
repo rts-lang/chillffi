@@ -9,6 +9,7 @@ use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};
 use std::ffi::c_void;
 use fxhash::FxHashMap;
+use libc::ssize_t;
 use crate::ffi::value::{Type, Value};
 use crate::zygote::{FFIRequest};
 // =================================================================================================
@@ -126,7 +127,7 @@ fn prepareFFIArgs<'a>(
         storage.push(Box::new((vec, pointer, len))); // Saving the length
       }
       Value::Function { id, argTypes, returnType } => {
-        let cif: Cif = build_cif(argTypes, returnType)
+        let cif: Cif = buildCif(argTypes, returnType)
           .map_err(|e| FFIError::Other(format!("Failed to build callback CIF: {}", e)))?;
         let data: Box<CallbackData> = Box::new(CallbackData {
           id: *id,
@@ -136,13 +137,13 @@ fn prepareFFIArgs<'a>(
           cache,
         });
         let dataRef: &'static CallbackData = &*Box::leak(data);
-        let closure: Closure = Closure::new(cif, callback_handler, dataRef);
+        let closure: Closure = Closure::new(cif, callbackHandler, dataRef);
         // code_ptr() возвращает &fn — сам указатель, а не его адрес.
         // Разыменование обязательно: без него в C ABI улетает адрес поля
         // Closure (Rust-куча), а не JIT-трамплин, который выделил libffi.
         let codeAddr: usize = *closure.code_ptr() as usize;
-        let code_ptr: *mut c_void = codeAddr as *mut c_void;
-        storage.push(Box::new((closure, code_ptr)));
+        let codePointer: *mut c_void = codeAddr as *mut c_void;
+        storage.push(Box::new((closure, codePointer)));
       }
       Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
     }
@@ -311,11 +312,20 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 
 // =================================================================================================
 
-struct CallbackData {
+struct CallbackData 
+{
+  /// todo desc
   id: u64,
+  
+  /// todo desc
   argTypes: Vec<Type>,
+  
+  /// todo desc
   returnType: Box<Type>,
+  
+  /// todo desc
   fd: RawFd,
+  
   /// Raw pointer to the clone's library cache (owned by `cloneLoop`, alive
   /// for the whole process). Needed so a nested request fired from inside
   /// the callback closure (e.g. Scope::readMemory, or even another `call!`)
@@ -323,16 +333,20 @@ struct CallbackData {
   cache: *mut FxHashMap<String, Library>
 }
 
-fn build_cif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError> {
-  let mut args_types: Vec<libffi::middle::Type> = Vec::with_capacity(argTypes.len());
+/// todo desc
+fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError> 
+{
+  let mut argsTypes: Vec<libffi::middle::Type> = Vec::with_capacity(argTypes.len());
   for t in argTypes {
-    args_types.push(libffi::middle::Type::from(t));
+    argsTypes.push(libffi::middle::Type::from(t));
   }
-  let ret_type = libffi::middle::Type::from(returnType);
-  Ok(libffi::middle::Cif::new(args_types.into_iter(), ret_type))
+  let returnType: libffi::middle::Type = libffi::middle::Type::from(returnType);
+  Ok(libffi::middle::Cif::new(argsTypes.into_iter(), returnType))
 }
 
-fn read_arg(ptr: *const std::ffi::c_void, typ: &Type) -> Value {
+/// todo desc
+fn readArg(ptr: *const std::ffi::c_void, typ: &Type) -> Value 
+{
   match typ {
     Type::None => Value::None,
     Type::U8  => unsafe { Value::U8(*(ptr as *const u8)) },
@@ -352,7 +366,9 @@ fn read_arg(ptr: *const std::ffi::c_void, typ: &Type) -> Value {
   }
 }
 
-fn write_ret(ret: &mut std::ffi::c_void, value: Value, typ: &Type) {
+/// todo desc
+fn writeRet(ret: &mut std::ffi::c_void, value: Value, typ: &Type) 
+{
   match (typ, value) {
     (Type::None, _) => {}
     (Type::U8,  Value::U8(v))  => unsafe { *(ret as *mut std::ffi::c_void as *mut u8)  = v },
@@ -373,40 +389,50 @@ fn write_ret(ret: &mut std::ffi::c_void, value: Value, typ: &Type) {
   }
 }
 
-fn write_message_fd(fd: RawFd, data: &[u8]) -> std::io::Result<()> {
-  let len = (data.len() as u32).to_le_bytes();
-  let mut total = 0usize;
+/// todo desc
+fn writeMessageFd(fd: RawFd, data: &[u8]) -> std::io::Result<()> 
+{
+  let length = (data.len() as u32).to_le_bytes();
+  let mut total: usize = 0usize;
+  
   while total < 4 {
-    let n = unsafe { libc::write(fd, len.as_ptr().add(total) as *const _, 4 - total) };
+    let n: ssize_t = unsafe { libc::write(fd, length.as_ptr().add(total) as *const _, 4 - total) };
     if n < 0 { return Err(std::io::Error::last_os_error()); }
     total += n as usize;
   }
+  
   total = 0;
+  
   while total < data.len() {
-    let n = unsafe { libc::write(fd, data.as_ptr().add(total) as *const _, data.len() - total) };
+    let n: ssize_t = unsafe { libc::write(fd, data.as_ptr().add(total) as *const _, data.len() - total) };
     if n < 0 { return Err(std::io::Error::last_os_error()); }
     total += n as usize;
   }
   Ok(())
 }
 
-fn read_message_fd(fd: RawFd) -> std::io::Result<Vec<u8>> {
-  let mut len_buf = [0u8; 4];
-  let mut total = 0usize;
+/// todo desc
+fn readMessageFd(fd: RawFd) -> std::io::Result<Vec<u8>> 
+{
+  let mut lengthBuffer: [u8; 4] = [0u8; 4];
+  let mut total: usize = 0usize;
+  
   while total < 4 {
-    let n = unsafe { libc::read(fd, len_buf.as_mut_ptr().add(total) as *mut _, 4 - total) };
+    let n: ssize_t = unsafe { libc::read(fd, lengthBuffer.as_mut_ptr().add(total) as *mut _, 4 - total) };
     if n <= 0 { return Err(std::io::Error::last_os_error()); }
     total += n as usize;
   }
-  let len = u32::from_le_bytes(len_buf) as usize;
-  let mut buf = vec![0u8; len];
+  
+  let length: usize = u32::from_le_bytes(lengthBuffer) as usize;
+  let mut buffer: Vec<u8> = vec![0u8; length];
   total = 0;
-  while total < len {
-    let n = unsafe { libc::read(fd, buf.as_mut_ptr().add(total) as *mut _, len - total) };
+  
+  while total < length {
+    let n: ssize_t = unsafe { libc::read(fd, buffer.as_mut_ptr().add(total) as *mut _, length - total) };
     if n <= 0 { return Err(std::io::Error::last_os_error()); }
     total += n as usize;
   }
-  Ok(buf)
+  Ok(buffer)
 }
 
 /// Called synchronously by C (e.g. qsort's comparator) mid-call.
@@ -424,25 +450,26 @@ fn read_message_fd(fd: RawFd) -> std::io::Result<Vec<u8>> {
 /// "clean" panic across this boundary. Every failure path returns instead,
 /// leaving `*ret` untouched (zeroed by libffi) and letting the outer call
 /// fail with a normal `FFIError` once the broken pipe is noticed upstream.
-unsafe extern "C" fn callback_handler(
+unsafe extern "C" fn callbackHandler(
   _cif: &libffi::low::ffi_cif,
   ret: &mut std::ffi::c_void,
   args: *const *const std::ffi::c_void,
   userdata: &CallbackData,
-) {
+) 
+{
   let cArgs: &[*const c_void] = unsafe { std::slice::from_raw_parts(args, userdata.argTypes.len()) };
   let mut rustArgs: Vec<Value> = Vec::with_capacity(userdata.argTypes.len());
   for (i, typ) in userdata.argTypes.iter().enumerate() {
-    rustArgs.push(read_arg(cArgs[i], typ));
+    rustArgs.push(readArg(cArgs[i], typ));
   }
 
   let invoke: FFIResponse = FFIResponse::Invoke { id: userdata.id, args: rustArgs };
   let bytes: Vec<u8> = match encode(&invoke) { Ok(b) => b, Err(_) => return };
-  if write_message_fd(userdata.fd, &bytes).is_err() { return; }
+  if writeMessageFd(userdata.fd, &bytes).is_err() { return; }
 
   loop
   {
-    let responseBytes: Vec<u8> = match read_message_fd(userdata.fd) {
+    let responseBytes: Vec<u8> = match readMessageFd(userdata.fd) {
       Ok(b) => b,
       Err(_) => return
     };
@@ -450,7 +477,7 @@ unsafe extern "C" fn callback_handler(
     match decode::<FFIRequest>(&responseBytes)
     {
       Ok(FFIRequest::CallbackResult { value }) => {
-        write_ret(ret, value, &userdata.returnType);
+        writeRet(ret, value, &userdata.returnType);
         return;
       }
       Ok(nestedRequest) => {
@@ -463,7 +490,7 @@ unsafe extern "C" fn callback_handler(
           Err(e) => FFIResponse::Err(e),
         };
         let responseBytes: Vec<u8> = match encode(&response) { Ok(b) => b, Err(_) => return };
-        if write_message_fd(userdata.fd, &responseBytes).is_err() { return; }
+        if writeMessageFd(userdata.fd, &responseBytes).is_err() { return; }
       }
       Err(_) => return
     }
