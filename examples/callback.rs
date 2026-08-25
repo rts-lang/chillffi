@@ -1,65 +1,94 @@
+use std::cmp::Ordering;
 use chillffi::ffi::value::{Value, Type};
-use chillffi::ffi::errors::FFIError;
-use chillffi::ffi::scope::Scope;
 use chillffi::callv;
 use chillffi::ffi;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
+use serde_closure::Fn;
 // =================================================================================================
 
 /// todo desc
-fn main() -> ()
+fn main()
 {
-  let sortedBytes: Vec<u8> = ffi!(|scope| {
-    let libc = Library::load("libc.so.6")?;
+  println!("=== Starting qsort via chillffi ===\n");
 
-    // 1. Выделяем память в клоне, кладём туда [3,1,4,1,5]
-    let mem: AllocatedMemory = scope.alloc(5 * 4)?; // 5 i32
-    let data: [i32; 5] = [3, 1, 4, 1, 5];
-    let raw: &[u8] = unsafe {
-      std::slice::from_raw_parts(data.as_ptr() as *const u8, 20)
+  let sorted: Vec<i32> = ffi!(|scope| {
+    let libc: Library = Library::load("libc.so.6")?;
+    println!("[ffi!] Loaded libc.so.6");
+
+    let mem: AllocatedMemory = scope.alloc(5 * 4)?;
+    let ptrAddr: usize = match mem.asPointer() {
+      Value::Pointer(addr) => addr,
+      other => panic!("expected Pointer, got {:?}", other),
     };
-    mem.write(Value::RawString(raw.to_vec()))?;
+    println!("[ffi!] Allocated 20 bytes at address: 0x{:X}", ptrAddr);
 
-    // 2. Создаём колбек compar(const void*, const void*) -> int
+    let data: [i32; 5] = [3, 1, 4, 1, 5];
+    println!("[ffi!] Original data: {:?}", data);
+
+    let raw: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
+    mem.write(Value::RawString(raw.to_vec()))?;
+    println!("[ffi!] Written raw bytes to clone memory\n");
+
     let compar: Value = scope.callback(
       vec![Type::Pointer, Type::Pointer],
       Type::I32,
-      |args| {
-        let Value::Pointer(a) = args[0] else { panic!("a") };
-        let Value::Pointer(b) = args[1] else { panic!("b") };
+      Fn!(|args: Vec<Value>| -> Value {
+        let a: usize = match args[0] {
+            Value::Pointer(a) => a,
+            _ => panic!("expected Pointer for arg 0"),
+        };
+        let b: usize = match args[1] {
+            Value::Pointer(b) => b,
+            _ => panic!("expected Pointer for arg 1"),
+        };
 
-        // a/b — адреса внутри клона. Колбэк исполняется в родителе,
-        // поэтому байты нужно забрать через IPC, а не разыменовывать напрямую.
-        let Ok(Value::RawString(aBytes)) = Scope::readMemory(a, 4) else { return Value::I32(0) };
-        let Ok(Value::RawString(bBytes)) = Scope::readMemory(b, 4) else { return Value::I32(0) };
+        // Прямое разыменование — мы внутри клона, та же память
+        let av: i32 = unsafe { *(a as *const i32) };
+        let bv: i32 = unsafe { *(b as *const i32) };
 
-        let av: i32 = i32::from_ne_bytes(aBytes.try_into().unwrap());
-        let bv: i32 = i32::from_ne_bytes(bBytes.try_into().unwrap());
+        let cmp: Ordering = av.cmp(&bv);
+        let result: i32 = cmp as i32;
 
-        Value::I32(av.cmp(&bv) as i32)
-      },
+        println!(
+          "  [callback] comparing *0x{:X} = {}  vs  *0x{:X} = {}  =>  {}",
+          a, av, b, bv,
+          match cmp {
+            std::cmp::Ordering::Less    => "LESS (return -1)",
+            std::cmp::Ordering::Equal   => "EQUAL (return 0)",
+            std::cmp::Ordering::Greater => "GREATER (return 1)",
+          }
+        );
+
+        Value::I32(result)
+      }),
     );
+    println!("[ffi!] Registered comparator callback\n");
 
-    // 3. Вызываем qsort(base, nmemb, size, compar)
+    println!("[ffi!] Calling qsort(mem, 5, 4, compar)...");
     callv!(libc, "qsort",
-      mem.asPointer(), // void *base
-      5 as usize,      // size_t nmemb
-      4 as usize,      // size_t size
-      compar           // int (*compar)(const void*, const void*)
+      mem.asPointer(),
+      5 as usize,
+      4 as usize,
+      compar
     )?;
+    println!("[ffi!] qsort returned\n");
 
-    // 4. Читаем отсортированный результат обратно в родителя
-    let Value::RawString(bytes) = mem.read()? else {
-      return Err(FFIError::Other("expected bytes".into()));
-    };
-    Ok(bytes)
+    let Value::RawString(bytes) = mem.read()? else { panic!() };
+    println!("[ffi!] Read back raw bytes: {:?}\n", bytes);
+
+    let vec: Vec<i32> = bytes.chunks_exact(4)
+      .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+      .collect();
+
+    println!("[ffi!] Decoded to i32 vector: {:?}", vec);
+
+    Ok(vec)
   }).expect("qsort failed");
 
-  // Проверяем
-  let sorted: Vec<i32> = sortedBytes.chunks_exact(4)
-    .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
-    .collect();
-
+  println!("\n=== Result outside ffi! block ===");
+  println!("sorted = {:?}", sorted);
   assert_eq!(sorted, vec![1, 1, 3, 4, 5]);
-  println!("ok: qsort callback roundtrip");
+  println!("Assertion passed: [1, 1, 3, 4, 5] ✓");
 }
+
+// =================================================================================================

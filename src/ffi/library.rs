@@ -5,7 +5,6 @@ use crate::pathResolver::resolveGlobal;
 use crate::ffi::scope;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
-use crate::zygote::ClonedZygote;
 use crate::zygote::ZygoteState;
 use crate::ffi::value::{Type, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -59,33 +58,16 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
     return Err(FFIError::ZygoteNotInitialized);
   }
 
-  // Only the pointer is taken under the RefCell guard; the guard is dropped
-  // immediately after (same trick as scope::resolveViaScope). This is what
-  // makes the call below re-entrant: a callback fired mid-call (e.g. a qsort
-  // comparator calling Scope::readMemory) reaches this same function while
-  // the outer zygote.call() for the *same* clone is still on the Rust stack.
-  // Holding the RefMut across that call would panic on the second borrow_mut().
-  //
-  // Sound because: single-threaded, and ZygoteStack is only pushed/popped at
-  // ffi!{} block entry/exit (ZygoteGuard::enter/drop) — never while a call is
-  // in flight — so the pointer stays valid for the reentrant call. It would
-  // NOT stay valid if a callback opened its own unrelated ffi!{} block on the
-  // same thread (that push can reallocate the Vec); not the case here.
-  let zygotePtr: *mut ClonedZygote = ZygoteStack.with(|stack| {
-    stack.borrow_mut().last_mut().map(|z| z as *mut ClonedZygote)
-  }).ok_or(FFIError::NoActiveZygoteScope)?;
+  ZygoteStack.with(|stack| {
+    let mut mutStack = stack.borrow_mut();
+    let zygote = mutStack.last_mut().ok_or(FFIError::NoActiveZygoteScope)?;
 
-  let zygote: &mut ClonedZygote = unsafe { &mut *zygotePtr };
-
-  // Execute the FFI request through the current zygote
-  match zygote.call(request) {
-    Ok(FFIResponse::Ok(val)) => Ok(val),
-    Ok(FFIResponse::Err(err)) => Err(err),
-    Ok(FFIResponse::Invoke { .. }) => {
-      unreachable!("Invoke must be handled inside ClonedZygote::call loop")
+    match zygote.call(request) {
+      Ok(FFIResponse::Ok(val)) => Ok(val),
+      Ok(FFIResponse::Err(err)) => Err(err),
+      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err)),
     }
-    Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
-  }
+  })
 }
 
 /// Performs an FFI function call by the identifier of the registered library.

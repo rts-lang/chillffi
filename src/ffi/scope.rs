@@ -1,5 +1,8 @@
+use serde_traitobject::Serialize;
+use serde_traitobject::Deserialize;
+use serde_traitobject::{Box as SerdeBox, Fn as SerdeFn};
+use crate::zygote::encode;
 use crate::ffi::value::Type;
-use crate::ffi::callback;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
 use std::cell::RefCell;
@@ -140,13 +143,30 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
+  /// todo desc
   pub fn callback<F>(&self, argTypes: Vec<Type>, returnType: Type, f: F) -> Value
   where
-    F: Fn(Vec<Value>) -> Value + Send + 'static,
+  // Полная форма для кастомного трейта:
+    F: SerdeFn<(Vec<Value>,), Output = Value>
+    + Serialize
+    + Deserialize
+    + Send
+    + 'static,
   {
     static nextID: AtomicU64 = AtomicU64::new(1);
     let id: u64 = nextID.fetch_add(1, Ordering::SeqCst);
-    callback::register(id, Box::new(f));
+
+    let erased: SerdeBox<dyn SerdeFn<(Vec<Value>,), Output = Value>> =
+      SerdeBox::new(f);
+    let bytes: Vec<u8> = encode(&erased).expect("serialize callback");
+
+    sendRawRequest(FFIRequest::RegisterCallback {
+      id,
+      bytes,
+      argTypes: argTypes.clone(),
+      returnType: returnType.clone(),
+    }).expect("register callback failed");
+
     Value::Function { id, argTypes, returnType: Box::new(returnType) }
   }
 

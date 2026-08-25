@@ -1,4 +1,6 @@
-use crate::ffi::callback;
+use parking_lot::MutexGuard;
+use parking_lot::Mutex;
+use std::sync::OnceLock;
 use crate::ffi::errors::FFIError;
 use std::cell::RefCell;
 use std::env;
@@ -7,7 +9,6 @@ use std::os::unix::net::{UnixStream};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd, OwnedFd};
 use std::path::PathBuf;
 use std::process::{Command, Child, Stdio};
-use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use bincode::config::Configuration;
 use fxhash::FxHashMap;
@@ -59,9 +60,8 @@ pub(super) enum FFIRequest
   /// Writes a value to the specified address in the zygote memory.
   WriteMemory { pointer: usize, value: Value },
 
-  /// Answer to a nested `FFIResponse::Invoke`, sent by the parent back to
-  /// the clone. Never sent as a fresh top-level request.
-  CallbackResult { value: Value }
+  /// Родитель шлёт сериализованное замыкание, клон его десериализует и сохраняет.
+  RegisterCallback { id: u64, bytes: Vec<u8>, argTypes: Vec<Type>, returnType: Type },
 }
 
 /// Response to the request with the execution result or error
@@ -72,12 +72,6 @@ pub(super) enum FFIResponse
   Ok(Value),
   /// Execution failed with the corresponding error.
   Err(FFIError),
-
-  /// Sent by the clone mid-call — a C callback (e.g. a qsort comparator)
-  /// fired and needs the parent to run the corresponding Rust closure.
-  /// Not a final answer: the parent must reply with
-  /// `FFIRequest::CallbackResult` and keep waiting for the real response.
-  Invoke { id: u64, args: Vec<Value> }
 }
 
 /// Controls the zygote process and 
@@ -121,8 +115,7 @@ impl ClonedZygote
   {
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get()
       .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Zygote not initialized"))?;
-    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock()
-      .map_err(|_| io::Error::other("Zygote mutex poisoned"))?;
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock();
 
     // Sends a signal to create a clone
     writeMessage(&mut guard.socket, &[1u8])?;
@@ -144,27 +137,14 @@ impl ClonedZygote
   pub(super) fn call(&mut self, request: FFIRequest) -> Result<FFIResponse, String>
   {
     let bytes: Vec<u8> = encode(&request).map_err(|e| e.to_string())?;
-    writeMessage(&mut self.socket, &bytes).map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+    writeMessage(&mut self.socket, &bytes)
+      .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
 
-    loop // todo Мне не нравится этот цикл, потому что он находится в запросе. Если это воскрешение
-         //   - его следует незамедлительно удалить отсюда.
-    {
-      let responseBytes: Vec<u8> = readMessage(&mut self.socket)
-        .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
-      let response: FFIResponse = decode(&responseBytes).map_err(|e| e.to_string())?;
+    let responseBytes: Vec<u8> = readMessage(&mut self.socket)
+      .map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
+    let response: FFIResponse = decode(&responseBytes).map_err(|e| e.to_string())?;
 
-      match response
-      {
-        FFIResponse::Invoke { id, args } =>
-        {
-          let result: Value = callback::invoke(id, args);
-          let answer: Vec<u8> = encode(&FFIRequest::CallbackResult { value: result }).map_err(|e| e.to_string())?;
-          writeMessage(&mut self.socket, &answer).map_err(|e| format!("Zygote clone IPC failed: {}", e))?;
-          // Not the final answer yet — loop back for the next message.
-        }
-        finalResponse => return Ok(finalResponse)
-      }
-    }
+    Ok(response)
   }
 }
 
@@ -323,7 +303,6 @@ fn zygoteLoop(mut socket: UnixStream) -> !
 fn cloneLoop(mut socket: UnixStream) -> ! 
 {
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
-  let fd: RawFd = socket.as_raw_fd();
   
   loop 
   {
@@ -335,7 +314,7 @@ fn cloneLoop(mut socket: UnixStream) -> !
         std::process::exit(0)
     };
 
-    let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache, fd);
+    let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
     let encodedResponse: Vec<u8> = match encode(&response) {
       Ok(bytes) => bytes,
       Err(_) => std::process::exit(1),
@@ -350,16 +329,16 @@ fn cloneLoop(mut socket: UnixStream) -> !
 /// Handles an incoming request and performs an FFI operation using the library cache.
 ///
 /// Returns the execution result or an error description.
-fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>, fd: RawFd) -> FFIResponse
+fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) -> FFIResponse
 {
-  match decode::<FFIRequest>(requestBytes)
+  match decode::<FFIRequest>(requestBytes) 
   {
-    Ok(request) => match executeFFI(request, cache, fd)
+    Ok(request) => match executeFFI(request, cache) 
     {
-      Ok(value) => FFIResponse::Ok(value),
-      Err(e) => FFIResponse::Err(e)
+      Ok(v) => FFIResponse::Ok(v),
+      Err(e) => FFIResponse::Err(e),
     },
-    Err(e) => FFIResponse::Err(e)
+    Err(e) => FFIResponse::Err(e),
   }
 }
 
@@ -374,12 +353,12 @@ fn supervisorLoop() -> ()
   {
     let pidToWait: u32 = {
       let mutex: &Mutex<ZygoteHandle> = match ZygoteState.get() { Some(m) => m, None => return };
-      mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).process.id()
+      mutex.lock().process.id()
     };
     unsafe { libc::waitpid(pidToWait as libc::pid_t, std::ptr::null_mut(), 0); }
 
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
-    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard: MutexGuard<ZygoteHandle> = mutex.lock();
     if guard.process.id() == pidToWait // Not recreated in parallel yet through call()
     {
       match spawnZygote()
