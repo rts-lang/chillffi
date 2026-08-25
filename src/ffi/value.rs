@@ -62,22 +62,8 @@ pub enum Value
   /// In C code, one would expect `const char *str, size_t len`.
   String(Vec<u8>),
 
-  /// A Rust closure registered via `Scope::callback`, passed to C as a
-  /// real function pointer (e.g. a `qsort` comparator).
-  ///
-  /// `id` references the closure in the parent-process registry
-  /// (`crate::ffi::callback`) — the closure itself never crosses the
-  /// process boundary, only this id does. `argTypes`/`returnType` describe
-  /// the C ABI the clone must build a libffi trampoline for; chillffi
-  /// cannot infer this from the Rust closure's signature.
-  ///
-  /// # Lifetime
-  /// Valid strictly within the `Scope` that created it (the same rule as
-  /// `AllocatedMemory`) — it is unregistered automatically when the
-  /// `ffi!(|scope| {})` block ends. Passing it to a C API that retains the
-  /// pointer beyond that block is undefined behavior, exactly as with a
-  /// dangling `Pointer`.
-  Function { id: u64, argTypes: Vec<Type>, returnType: Box<Type> }
+  /// todo desc
+  Function(u64)
 }
 
 // =================================================================================================

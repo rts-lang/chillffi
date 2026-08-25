@@ -167,7 +167,7 @@ impl<'g> Scope<'g>
       returnType: returnType.clone(),
     }).expect("register callback failed");
 
-    Value::Function { id, argTypes, returnType: Box::new(returnType) }
+    Value::Function(id)
   }
 
   // ===============================================================================================

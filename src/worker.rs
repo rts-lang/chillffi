@@ -14,7 +14,7 @@ use serde_traitobject::{Box as SerdeBox, Fn as SerdeFn};
 // =================================================================================================
 
 /// Callback registry inside the CLONE (not parent)
-struct CallbackWrapper 
+struct CallbackWrapper
 {
   /// todo desc
   closure: SerdeBox<dyn SerdeFn<(Vec<Value>,), Output = Value>>,
@@ -25,9 +25,14 @@ struct CallbackWrapper
 }
 
 /// todo desc
-struct CallbackEntry 
+struct CallbackEntry
 {
-  /// todo desc
+  /// Never read directly — kept alive purely for its `Drop` impl. `Closure`
+  /// owns the JIT-compiled trampoline memory that `codePointer` points into;
+  /// if this field were removed (or dropped early), `codePointer` would
+  /// dangle the moment registration returns, and C would jump into freed
+  /// memory on the very next call. This is intentional RAII, not dead code.
+  #[allow(dead_code)]
   closure: Closure<'static>,
   /// todo desc
   codePointer: *mut c_void
@@ -40,6 +45,16 @@ unsafe impl Send for CallbackEntry {}
 /// todo desc
 static CallbackRegistry: OnceLock<Mutex<FxHashMap<u64, CallbackEntry>>> = OnceLock::new();
 
+thread_local! {
+  /// Set by `trampoline` when the user's registered closure panics mid-call.
+  /// A panic can't propagate through the C stack frame that called us (qsort
+  /// etc.), so `catch_unwind` traps it here and this flag is the only way to
+  /// surface it: `executeCall` checks it right after the underlying C call
+  /// returns and turns the whole request into a clean `FFIError` instead of
+  /// silently handing back a result built from a default/zero value.
+  static CallbackPanicked: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
 /// todo desc
 fn registry() -> &'static Mutex<FxHashMap<u64, CallbackEntry>> {
   CallbackRegistry.get_or_init(|| Mutex::new(FxHashMap::default()))
@@ -51,14 +66,21 @@ unsafe extern "C" fn trampoline(
   ret: &mut std::ffi::c_void,
   args: *const *const std::ffi::c_void,
   userdata: &CallbackWrapper,
-) 
+)
 {
   let cArgs: &[*const c_void] = unsafe { std::slice::from_raw_parts(args, userdata.argTypes.len()) };
   let mut rustArgs: Vec<Value> = Vec::with_capacity(userdata.argTypes.len());
+  
   for (i, typ) in userdata.argTypes.iter().enumerate() {
     rustArgs.push(readArg(cArgs[i], typ));
   }
-  let result = (userdata.closure)(rustArgs);
+  
+  let result: Value = 
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (userdata.closure)(rustArgs)))
+    .unwrap_or_else(|_| {
+      CallbackPanicked.with(|f| f.set(true));
+      Value::None
+    });
   writeRet(ret, result, &userdata.returnType);
 }
 
@@ -174,7 +196,7 @@ fn prepareFFIArgs<'a>(
         let len: usize = vec.len();
         storage.push(Box::new((vec, pointer, len))); // Saving the length
       }
-      Value::Function { id, argTypes, returnType } => {
+      Value::Function(id) => {
         let reg = registry().lock();
         let entry: &CallbackEntry = reg.get(id)
           .ok_or_else(|| FFIError::Other(format!("callback {} not registered", id)))?;
@@ -349,7 +371,7 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 // =================================================================================================
 
 /// todo desc
-fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError> 
+fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError>
 {
   let mut argsTypes: Vec<libffi::middle::Type> = Vec::with_capacity(argTypes.len());
   for t in argTypes {
@@ -521,7 +543,15 @@ fn executeCall(
   let codePointer: CodePtr = CodePtr(functionPointer);
   let ffiResult: Value = invokeFFI(&cif, codePointer, &argsFfi, &ffiResultType);
 
-  //
+  // A registered callback may have panicked mid-call (see `trampoline` +
+  // `CallbackPanicked`) — the C function still "completed" and ffiResult is
+  // whatever came out of that, but at least one comparison/predicate/etc.
+  // ran on a default value instead of the real one. Don't hand back a
+  // result the caller would trust as correct.
+  if CallbackPanicked.with(|f| f.replace(false)) {
+    return Err(FFIError::Other("a registered callback panicked during the call".to_string()));
+  }
+
   Ok(ffiResult)
 }
 

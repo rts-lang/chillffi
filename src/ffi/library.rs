@@ -65,7 +65,7 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),
       Ok(FFIResponse::Err(err)) => Err(err),
-      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err)),
+      Err(err) => Err(FFIError::ZygoteCommunicationFailed(err))
     }
   })
 }

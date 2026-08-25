@@ -61,7 +61,7 @@ pub(super) enum FFIRequest
   WriteMemory { pointer: usize, value: Value },
 
   /// Родитель шлёт сериализованное замыкание, клон его десериализует и сохраняет.
-  RegisterCallback { id: u64, bytes: Vec<u8>, argTypes: Vec<Type>, returnType: Type },
+  RegisterCallback { id: u64, bytes: Vec<u8>, argTypes: Vec<Type>, returnType: Type }
 }
 
 /// Response to the request with the execution result or error
@@ -71,7 +71,7 @@ pub(super) enum FFIResponse
   /// Successful execution with the returned value.
   Ok(Value),
   /// Execution failed with the corresponding error.
-  Err(FFIError),
+  Err(FFIError)
 }
 
 /// Controls the zygote process and 
