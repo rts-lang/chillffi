@@ -1,7 +1,6 @@
 use parking_lot::Mutex;
 use std::sync::OnceLock;
 use libffi::middle::Closure;
-use crate::zygote::decode;
 use crate::ffi::errors::FFIError;
 use std::any::Any;
 use libloading::Library;
@@ -10,14 +9,14 @@ use std::ffi::c_void;
 use fxhash::FxHashMap;
 use crate::ffi::value::{Type, Value};
 use crate::zygote::{FFIRequest};
-use serde_traitobject::{Box as SerdeBox, Fn as SerdeFn};
+use chillcall::Callable;
 // =================================================================================================
 
 /// Callback registry inside the CLONE (not parent)
 struct CallbackWrapper
 {
   /// todo desc
-  closure: SerdeBox<dyn SerdeFn<(Vec<Value>,), Output = Value>>,
+  closure: Box<dyn Callable<Vec<Value>, Value>>,
   /// todo desc
   argTypes: Vec<Type>,
   /// todo desc
@@ -70,17 +69,17 @@ unsafe extern "C" fn trampoline(
 {
   let cArgs: &[*const c_void] = unsafe { std::slice::from_raw_parts(args, userdata.argTypes.len()) };
   let mut rustArgs: Vec<Value> = Vec::with_capacity(userdata.argTypes.len());
-  
+
   for (i, typ) in userdata.argTypes.iter().enumerate() {
     rustArgs.push(readArg(cArgs[i], typ));
   }
-  
-  let result: Value = 
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (userdata.closure)(rustArgs)))
-    .unwrap_or_else(|_| {
-      CallbackPanicked.with(|f| f.set(true));
-      Value::None
-    });
+
+  let result: Value =
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| userdata.closure.call(rustArgs)))
+      .unwrap_or_else(|_| {
+        CallbackPanicked.with(|f| f.set(true));
+        Value::None
+      });
   writeRet(ret, result, &userdata.returnType);
 }
 
@@ -108,7 +107,7 @@ fn toCifTypes(val: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
     Value::Pointer(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::RawString(_) | Value::CString(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::String(_) => Ok(vec![libffi::middle::Type::pointer(), libffi::middle::Type::usize()]),
-    Value::Function { .. } => Ok(vec![libffi::middle::Type::pointer()]),
+    Value::Function(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::None => Err(FFIError::BadArgument("Cannot pass Value::None as argument".to_string()))
   }
 }
@@ -467,7 +466,8 @@ pub(super) fn executeFFI(
     }
 
     FFIRequest::RegisterCallback { id, bytes, argTypes, returnType } => {
-      let wrapper: SerdeBox<dyn SerdeFn<(Vec<Value>,), Output = Value>> = decode(&bytes)?;
+      let wrapper: Box<dyn Callable<Vec<Value>, Value>> = chillcall::decode(&bytes)
+        .map_err(|e| FFIError::Other(format!("chillcall decode failed: {e}")))?;
       let cif: Cif = buildCif(&argTypes, &returnType)?;
       let leaked: &mut CallbackWrapper = Box::leak(Box::new(CallbackWrapper {
         closure: wrapper,

@@ -1,7 +1,5 @@
-use serde_traitobject::Serialize;
-use serde_traitobject::Deserialize;
-use serde_traitobject::{Box as SerdeBox, Fn as SerdeFn};
-use crate::zygote::encode;
+use chillcall::{Callable, Sendable};
+use serde::Serialize;
 use crate::ffi::value::Type;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
@@ -143,22 +141,25 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
-  /// todo desc
-  pub fn callback<F>(&self, argTypes: Vec<Type>, returnType: Type, f: F) -> Value
+  /// Registers a closure built with `chillcall!` as an FFI-callable function
+  /// (e.g. a `qsort` comparator). Capture is explicit at the macro call site,
+  /// this method only ships the already-built closure to the clone:
+  ///
+  /// ```ignore
+  /// let threshold: i32 = 5;
+  /// let compar = chillcall::chillcall!([threshold: i32] |args: Vec<Value>| -> Value {
+  ///   /* ... */
+  /// });
+  /// let compar: Value = scope.callback(vec![Type::Pointer, Type::Pointer], Type::I32, compar);
+  /// ```
+  pub fn callback<T>(&self, argTypes: Vec<Type>, returnType: Type, f: Sendable<Vec<Value>, Value, T>) -> Value
   where
-  // Полная форма для кастомного трейта:
-    F: SerdeFn<(Vec<Value>,), Output = Value>
-    + Serialize
-    + Deserialize
-    + Send
-    + 'static,
+    T: Callable<Vec<Value>, Value> + Serialize,
   {
     static nextID: AtomicU64 = AtomicU64::new(1);
     let id: u64 = nextID.fetch_add(1, Ordering::SeqCst);
 
-    let erased: SerdeBox<dyn SerdeFn<(Vec<Value>,), Output = Value>> =
-      SerdeBox::new(f);
-    let bytes: Vec<u8> = encode(&erased).expect("serialize callback");
+    let bytes: Vec<u8> = f.encode().expect("encode callback");
 
     sendRawRequest(FFIRequest::RegisterCallback {
       id,

@@ -3,7 +3,7 @@ use chillffi::ffi::value::{Value, Type};
 use chillffi::callv;
 use chillffi::ffi;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
-use serde_closure::Fn;
+use chillcall::chillcall;
 // =================================================================================================
 
 /// todo desc
@@ -29,38 +29,43 @@ fn main()
     mem.write(Value::RawString(raw.to_vec()))?;
     println!("[ffi!] Written raw bytes to clone memory\n");
 
+    // Пустой список захвата — компаратор ничего не берёт из внешней области,
+    // только свой параметр args. Если бы был нужен захват (например
+    // threshold), список выглядел бы как chillcall!([threshold: i32] |args| ...).
+    let compar = chillcall!([] |args: Vec<Value>| -> Value {
+      let a: usize = match args[0] {
+        Value::Pointer(a) => a,
+        _ => panic!("expected Pointer for arg 0"),
+      };
+      let b: usize = match args[1] {
+        Value::Pointer(b) => b,
+        _ => panic!("expected Pointer for arg 1"),
+      };
+
+      // Прямое разыменование — мы внутри клона, та же память
+      let av: i32 = unsafe { *(a as *const i32) };
+      let bv: i32 = unsafe { *(b as *const i32) };
+
+      let cmp: Ordering = av.cmp(&bv);
+      let result: i32 = cmp as i32;
+
+      println!(
+        "  [callback] comparing *0x{:X} = {}  vs  *0x{:X} = {}  =>  {}",
+        a, av, b, bv,
+        match cmp {
+          Ordering::Less    => "LESS (return -1)",
+          Ordering::Equal   => "EQUAL (return 0)",
+          Ordering::Greater => "GREATER (return 1)",
+        }
+      );
+
+      Value::I32(result)
+    });
+
     let compar: Value = scope.callback(
       vec![Type::Pointer, Type::Pointer],
       Type::I32,
-      Fn!(|args: Vec<Value>| -> Value {
-        let a: usize = match args[0] {
-            Value::Pointer(a) => a,
-            _ => panic!("expected Pointer for arg 0"),
-        };
-        let b: usize = match args[1] {
-            Value::Pointer(b) => b,
-            _ => panic!("expected Pointer for arg 1"),
-        };
-
-        // Прямое разыменование — мы внутри клона, та же память
-        let av: i32 = unsafe { *(a as *const i32) };
-        let bv: i32 = unsafe { *(b as *const i32) };
-
-        let cmp: Ordering = av.cmp(&bv);
-        let result: i32 = cmp as i32;
-
-        println!(
-          "  [callback] comparing *0x{:X} = {}  vs  *0x{:X} = {}  =>  {}",
-          a, av, b, bv,
-          match cmp {
-            std::cmp::Ordering::Less    => "LESS (return -1)",
-            std::cmp::Ordering::Equal   => "EQUAL (return 0)",
-            std::cmp::Ordering::Greater => "GREATER (return 1)",
-          }
-        );
-
-        Value::I32(result)
-      }),
+      compar,
     );
     println!("[ffi!] Registered comparator callback\n");
 
