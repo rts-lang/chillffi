@@ -1,3 +1,4 @@
+use crate::ffi::callback;
 use parking_lot::Mutex;
 use std::sync::OnceLock;
 use libffi::middle::Closure;
@@ -9,21 +10,21 @@ use std::ffi::c_void;
 use fxhash::FxHashMap;
 use crate::ffi::value::{Type, Value};
 use crate::zygote::{FFIRequest};
-use chillcall::Callable;
+use crate::ffi::callback::Callable;
 // =================================================================================================
 
 /// Callback registry inside the CLONE (not parent)
 struct CallbackWrapper
 {
-  /// todo desc
+  /// The decoded Rust closure to be invoked.
   closure: Box<dyn Callable<Vec<Value>, Value>>,
-  /// todo desc
+  /// Expected FFI argument types for correct deserialization.
   argTypes: Vec<Type>,
-  /// todo desc
+  /// Expected FFI return type.
   returnType: Box<Type>
 }
 
-/// todo desc
+/// Holds the JIT-compiled closure and its raw function pointer for FFI execution.
 struct CallbackEntry
 {
   /// Never read directly — kept alive purely for its `Drop` impl. `Closure`
@@ -33,33 +34,36 @@ struct CallbackEntry
   /// memory on the very next call. This is intentional RAII, not dead code.
   #[allow(dead_code)]
   closure: Closure<'static>,
-  /// todo desc
+  /// Raw C function pointer to the JIT-compiled trampoline.
   codePointer: *mut c_void
 }
 
-// SAFETY: CallbackRegistry используется только внутри одного fork-клона,
-// который является однопоточным.
+/// SAFETY: CallbackRegistry is used exclusively within a single fork-clone,
+/// which operates as a single-threaded process.
 unsafe impl Send for CallbackEntry {}
 
-/// todo desc
+/// Global map storing registered JIT-compiled callbacks by their unique IDs.
 static CallbackRegistry: OnceLock<Mutex<FxHashMap<u64, CallbackEntry>>> = OnceLock::new();
 
 thread_local! {
-  /// Set by `trampoline` when the user's registered closure panics mid-call.
-  /// A panic can't propagate through the C stack frame that called us (qsort
-  /// etc.), so `catch_unwind` traps it here and this flag is the only way to
-  /// surface it: `executeCall` checks it right after the underlying C call
-  /// returns and turns the whole request into a clean `FFIError` instead of
-  /// silently handing back a result built from a default/zero value.
+  /// Set by `trampoline` if the user's closure panics mid-call.
+  ///
+  /// Panics cannot propagate through C stack frames. `catch_unwind` traps it, 
+  /// and this flag becomes the only way to surface the error. 
+  ///
+  /// `executeCall` checks this after the C call returns, producing a clean 
+  /// `FFIError` instead of silently returning a default/zero value.
   static CallbackPanicked: std::cell::Cell<bool> = std::cell::Cell::new(false);
 }
 
-/// todo desc
+/// Initializes and returns a reference to the global callback registry.
 fn registry() -> &'static Mutex<FxHashMap<u64, CallbackEntry>> {
   CallbackRegistry.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
-/// todo desc
+/// The universal C-callable trampoline. 
+/// 
+/// Converts C arguments to Rust `Value`s, invokes the closure, and translates the result back.
 unsafe extern "C" fn trampoline(
   _cif: &libffi::low::ffi_cif,
   ret: &mut std::ffi::c_void,
@@ -67,13 +71,19 @@ unsafe extern "C" fn trampoline(
   userdata: &CallbackWrapper,
 )
 {
+  // Safely construct a slice of raw C argument pointers based on the expected length.
   let cArgs: &[*const c_void] = unsafe { std::slice::from_raw_parts(args, userdata.argTypes.len()) };
   let mut rustArgs: Vec<Value> = Vec::with_capacity(userdata.argTypes.len());
 
+  // Convert each raw C argument into a safe Rust `Value` according to its expected signature.
   for (i, typ) in userdata.argTypes.iter().enumerate() {
     rustArgs.push(readArg(cArgs[i], typ));
   }
 
+  // Invoke the Rust closure while catching panics to prevent unwinding across the C boundary.
+  //
+  // On panic, we signal the thread-local flag and return a dummy `None` value 
+  // so C code can gracefully resume (and eventually return control to our safe wrapper).
   let result: Value =
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| userdata.closure.call(rustArgs)))
       .unwrap_or_else(|_| {
@@ -369,7 +379,7 @@ fn downcastRef<T: 'static>(entry: &Box<dyn Any>) -> Result<&T, FFIError>
 
 // =================================================================================================
 
-/// todo desc
+/// Constructs a libffi `Cif` (Call Interface) defining the argument and return types.
 fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif, FFIError>
 {
   let mut argsTypes: Vec<libffi::middle::Type> = Vec::with_capacity(argTypes.len());
@@ -380,32 +390,33 @@ fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif,
   Ok(libffi::middle::Cif::new(argsTypes.into_iter(), returnType))
 }
 
-/// todo desc
-fn readArg(ptr: *const std::ffi::c_void, typ: &Type) -> Value 
+/// Safely reads a raw C pointer and converts it into a Rust `Value` based on the specified `Type`.
+fn readArg(ptr: *const std::ffi::c_void, typ: &Type) -> Value
 {
   match typ {
     Type::None => Value::None,
-    Type::U8  => unsafe { Value::U8(*(ptr as *const u8)) },
-    Type::U16 => unsafe { Value::U16(*(ptr as *const u16)) },
-    Type::U32 => unsafe { Value::U32(*(ptr as *const u32)) },
-    Type::U64 => unsafe { Value::U64(*(ptr as *const u64)) },
-    Type::Usize => unsafe { Value::Usize(*(ptr as *const usize)) },
-    Type::I8  => unsafe { Value::I8(*(ptr as *const i8)) },
-    Type::I16 => unsafe { Value::I16(*(ptr as *const i16)) },
-    Type::I32 => unsafe { Value::I32(*(ptr as *const i32)) },
-    Type::I64 => unsafe { Value::I64(*(ptr as *const i64)) },
-    Type::Isize => unsafe { Value::Isize(*(ptr as *const isize)) },
-    Type::F32 => unsafe { Value::F32(*(ptr as *const f32)) },
-    Type::F64 => unsafe { Value::F64(*(ptr as *const f64)) },
-    Type::Bool => unsafe { Value::Bool(*(ptr as *const u8) != 0) },
-    Type::Pointer => unsafe { Value::Pointer(*(ptr as *const usize)) },
+    Type::U8 => Value::U8(unsafe { *(ptr as *const u8) }),
+    Type::U16 => Value::U16(unsafe { *(ptr as *const u16) }),
+    Type::U32 => Value::U32(unsafe { *(ptr as *const u32) }),
+    Type::U64 => Value::U64(unsafe { *(ptr as *const u64) }),
+    Type::Usize => Value::Usize(unsafe { *(ptr as *const usize) }),
+    Type::I8 => Value::I8(unsafe { *(ptr as *const i8) }),
+    Type::I16 => Value::I16(unsafe { *(ptr as *const i16) }),
+    Type::I32 => Value::I32(unsafe { *(ptr as *const i32) }),
+    Type::I64 => Value::I64(unsafe { *(ptr as *const i64) }),
+    Type::Isize => Value::Isize(unsafe { *(ptr as *const isize) }),
+    Type::F32 => Value::F32(unsafe { *(ptr as *const f32) }),
+    Type::F64 => Value::F64(unsafe { *(ptr as *const f64) }),
+    Type::Bool => Value::Bool(unsafe { *(ptr as *const u8) != 0 }),
+    Type::Pointer => Value::Pointer(unsafe { *(ptr as *const usize) }),
   }
 }
 
-/// todo desc
-fn writeRet(ret: &mut std::ffi::c_void, value: Value, typ: &Type) 
+/// Writes a Rust `Value` back into the raw C return pointer based on the expected `Type`.
+fn writeRet(ret: &mut std::ffi::c_void, value: Value, typ: &Type)
 {
-  match (typ, value) {
+  match (typ, value) 
+  {
     (Type::None, _) => {}
     (Type::U8,  Value::U8(v))  => unsafe { *(ret as *mut std::ffi::c_void as *mut u8)  = v },
     (Type::U16, Value::U16(v)) => unsafe { *(ret as *mut std::ffi::c_void as *mut u16) = v },
@@ -438,36 +449,36 @@ pub(super) fn executeFFI(
     FFIRequest::Call { libraryPath, functionName, args, resultType } =>
       executeCall(libraryPath, functionName, args, resultType, cache),
 
-    FFIRequest::Alloc { length } => unsafe {
-      let ptr: *mut c_void = libc::malloc(length);
+    FFIRequest::Alloc { length } => {
+      let ptr: *mut c_void = unsafe{ libc::malloc(length) };
       if ptr.is_null() { return Err(FFIError::Other("malloc returned null".to_string())); }
       Ok(Value::Pointer(ptr as usize))
     },
 
-    FFIRequest::Free { pointer } => unsafe {
-      libc::free(pointer as *mut c_void);
+    FFIRequest::Free { pointer } => {
+      unsafe{ libc::free(pointer as *mut c_void) };
       Ok(Value::None)
     }
 
-    FFIRequest::ReadMemory { pointer, length } => unsafe {
+    FFIRequest::ReadMemory { pointer, length } => {
       if pointer == 0 { return Err(FFIError::BadArgument("null pointer".to_string())); }
-      let slice: &[u8] = std::slice::from_raw_parts(pointer as *const u8, length);
+      let slice: &[u8] = unsafe{ std::slice::from_raw_parts(pointer as *const u8, length) };
       Ok(Value::RawString(slice.to_vec()))
     },
 
-    FFIRequest::WriteMemory { pointer, value } => unsafe {
+    FFIRequest::WriteMemory { pointer, value } => {
       if pointer == 0 { return Err(FFIError::BadArgument("null pointer".to_string())); }
       let bytes: &[u8] = match &value {
         Value::RawString(v) | Value::CString(v) => v.as_slice(),
         _ => return Err(FFIError::BadArgument("expected RawString or CString for WriteMemory".to_string())),
       };
-      std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer as *mut u8, bytes.len());
+      unsafe{ std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer as *mut u8, bytes.len()) };
       Ok(Value::None)
     }
 
     FFIRequest::RegisterCallback { id, bytes, argTypes, returnType } => {
-      let wrapper: Box<dyn Callable<Vec<Value>, Value>> = chillcall::decode(&bytes)
-        .map_err(|e| FFIError::Other(format!("chillcall decode failed: {e}")))?;
+      let wrapper: Box<dyn Callable<Vec<Value>, Value>> = callback::decode(&bytes)
+        .map_err(|e| FFIError::Other(format!("call decode failed: {e}")))?;
       let cif: Cif = buildCif(&argTypes, &returnType)?;
       let leaked: &mut CallbackWrapper = Box::leak(Box::new(CallbackWrapper {
         closure: wrapper,

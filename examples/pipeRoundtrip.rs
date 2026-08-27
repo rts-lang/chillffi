@@ -7,6 +7,8 @@ use chillffi::ffi;
 // =================================================================================================
 
 /// pipe()+write()/read(): array out-param (2 fd), round-trip.
+/// 
+/// todo Нужно описание между строк, что тут происходит
 fn main() -> ()
 {
   let received: Vec<u8> = ffi!(|scope| {
@@ -39,6 +41,7 @@ fn main() -> ()
     Ok(readBytes)
   }).expect("pipe roundtrip failed");
 
+  //
   println!("received: {:?}", String::from_utf8_lossy(&received));
 
   assert_eq!(received, b"hi".to_vec());

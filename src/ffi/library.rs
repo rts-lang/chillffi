@@ -1,3 +1,4 @@
+use std::cell::RefMut;
 use crate::ffi::value::Primitive;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLock;
@@ -9,6 +10,7 @@ use crate::zygote::ZygoteState;
 use crate::ffi::value::{Type, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{OnceLock};
+use crate::__ffiInternal::ClonedZygote;
 use crate::zygote::{FFIRequest, FFIResponse, ZygoteStack};
 // =================================================================================================
 
@@ -59,8 +61,8 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
   }
 
   ZygoteStack.with(|stack| {
-    let mut mutStack = stack.borrow_mut();
-    let zygote = mutStack.last_mut().ok_or(FFIError::NoActiveZygoteScope)?;
+    let mut mutStack: RefMut<Vec<ClonedZygote>> = stack.borrow_mut();
+    let zygote: &mut ClonedZygote = mutStack.last_mut().ok_or(FFIError::NoActiveZygoteScope)?;
 
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val)) => Ok(val),

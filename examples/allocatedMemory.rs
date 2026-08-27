@@ -6,6 +6,8 @@ use chillffi::ffi;
 // =================================================================================================
 
 /// stat(): C-string + struct out-param через alloc/read.
+///
+/// todo Нужно описание между строк, что тут происходит
 fn main() -> ()
 {
   let size: i64 = ffi!(|scope| {
@@ -31,6 +33,7 @@ fn main() -> ()
     Ok(i64::from_ne_bytes(bytes[48..56].try_into().unwrap()))
   }).expect("stat() failed");
 
+  //
   println!("file size = {} bytes", size);
 
   let expected: u64 = std::fs::metadata("/etc/hostname").expect("metadata").len();

@@ -1,4 +1,4 @@
-use chillcall::{Callable, Sendable};
+use crate::ffi::callback::{Callable, Sendable};
 use serde::Serialize;
 use crate::ffi::value::Type;
 use std::sync::atomic::Ordering;
@@ -15,7 +15,7 @@ use crate::zygote::FFIRequest;
 // =================================================================================================
 
 /// Heavy stack or arena for temporary allocations within an ffi!{} scope.
-struct HeavyStack 
+struct HeavyStack
 {
   /// Local path resolver for the current scope.
   pathResolver: Option<PathResolver>
@@ -25,7 +25,7 @@ struct HeavyStack
 
 /// Owner of HeavyStack. Created by the ffi!{} macro once per block (only if
 /// the user requested Scope), lives and dies strictly with this block.
-/// 
+///
 /// Is not published directly — access only through Scope<'g>.
 #[doc(hidden)]
 pub struct ScopeGuard
@@ -52,7 +52,7 @@ pub(super) fn resolveViaScope(name: &str) -> Option<String>
 {
   ScopeStack.with(|s| {
     let ptr: *const ScopeGuard = *s.borrow().last()?;
-    let slot: &Option<HeavyStack> = unsafe { &*(*ptr).inner.get() };
+    let slot: &Option<HeavyStack> = unsafe{ &*(*ptr).inner.get() };
     slot.as_ref()?.pathResolver.as_ref()?.resolve(name)
   })
 }
@@ -60,7 +60,7 @@ pub(super) fn resolveViaScope(name: &str) -> Option<String>
 // =================================================================================================
 
 /// A handle to the ScopeGuard of the current ffi!{}-block — borrows it for 'g.
-/// 
+///
 /// That is precisely why AllocatedMemory<'g> cannot leave the block: the ScopeGuard,
 /// which it borrows, is dropped at the boundary of the block, and this is checked by the compiler.
 pub struct Scope<'g>
@@ -71,7 +71,7 @@ pub struct Scope<'g>
 impl<'g> Scope<'g>
 {
   // ===============================================================================================
-  
+
   #[doc(hidden)]
   #[inline(always)]
   pub fn new(guard: &'g ScopeGuard) -> Self
@@ -85,12 +85,10 @@ impl<'g> Scope<'g>
   /// Adds a directory to the local search path of the scope.
   pub fn addSearchPath(&self, path: impl Into<PathBuf>) -> ()
   {
-    unsafe {
-      let slot: &mut Option<HeavyStack> = &mut *self.guard.inner.get();
-      slot.get_or_insert_with(|| HeavyStack{ pathResolver: None })
-        .pathResolver.get_or_insert_with(PathResolver::default)
-        .addPath(path);
-    }
+    let slot: &mut Option<HeavyStack> = unsafe{ &mut *self.guard.inner.get() };
+    slot.get_or_insert_with(|| HeavyStack{ pathResolver: None })
+      .pathResolver.get_or_insert_with(PathResolver::default)
+      .addPath(path);
   }
 
   // ===============================================================================================
@@ -98,15 +96,13 @@ impl<'g> Scope<'g>
   /// Allocates `length` bytes in the clone's heap.
   pub fn alloc(&self, length: usize) -> Result<AllocatedMemory<'g>, FFIError>
   {
-    unsafe {
-      let stack: &mut Option<HeavyStack> = &mut *self.guard.inner.get();
+    let stack: &mut Option<HeavyStack> = unsafe{ &mut *self.guard.inner.get() };
 
-      // Initialization of the heavy stack happens only on the first call to alloc()
-      if stack.is_none() {
-        *stack = Some(HeavyStack{
-          pathResolver: None
-        });
-      }
+    // Initialization of the heavy stack happens only on the first call to alloc()
+    if stack.is_none() {
+      *stack = Some(HeavyStack{
+        pathResolver: None
+      });
     }
 
     // Memory allocation through zigot
@@ -141,17 +137,9 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
-  /// Registers a closure built with `chillcall!` as an FFI-callable function
+  /// Registers a closure built with `callback!` as an FFI-callable function
   /// (e.g. a `qsort` comparator). Capture is explicit at the macro call site,
   /// this method only ships the already-built closure to the clone:
-  ///
-  /// ```ignore
-  /// let threshold: i32 = 5;
-  /// let compar = chillcall::chillcall!([threshold: i32] |args: Vec<Value>| -> Value {
-  ///   /* ... */
-  /// });
-  /// let compar: Value = scope.callback(vec![Type::Pointer, Type::Pointer], Type::I32, compar);
-  /// ```
   pub fn callback<T>(&self, argTypes: Vec<Type>, returnType: Type, f: Sendable<Vec<Value>, Value, T>) -> Value
   where
     T: Callable<Vec<Value>, Value> + Serialize,

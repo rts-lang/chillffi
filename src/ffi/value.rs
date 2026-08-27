@@ -62,7 +62,10 @@ pub enum Value
   /// In C code, one would expect `const char *str, size_t len`.
   String(Vec<u8>),
 
-  /// todo desc
+  /// Represents a Rust closure passed to C as a function pointer.
+  ///
+  /// The `u64` holds the unique ID used to locate the JIT-compiled trampoline 
+  /// inside the clone's callback registry.
   Function(u64)
 }
 

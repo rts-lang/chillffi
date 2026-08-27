@@ -91,11 +91,6 @@ fxhash = "0.2.1"
 parking_lot = "0.12.5"
 # Fast and compact synchronization primitives without lock poisoning.
 
-serde_closure = "0.3.3"
-serde_traitobject = { path = "../serde_traitobject" }
-chillcall = { path = "../chillcall/chillcall" }
-# todo desc на оба
-
 # ======================================================================================================================
 
 [lints.rust]
