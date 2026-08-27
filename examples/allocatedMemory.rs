@@ -5,7 +5,7 @@ use chillffi::call;
 use chillffi::ffi;
 // =================================================================================================
 
-/// stat(): C-string + struct out-param через alloc/read.
+/// stat(): C-string + struct out-param via alloc/read.
 ///
 /// todo Нужно описание между строк, что тут происходит
 fn main() -> ()
@@ -13,7 +13,7 @@ fn main() -> ()
   let size: i64 = ffi!(|scope| {
     let libc: Library = Library::load("libc.so.6")?;
 
-    // struct stat — 144 байта на x86_64 Linux (glibc)
+    // struct stat — 144 bytes on x86_64 Linux (glibc)
     let statMem: AllocatedMemory = scope.alloc(144)?;
 
     let result: i32 = call!(

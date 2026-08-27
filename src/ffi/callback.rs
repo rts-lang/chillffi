@@ -188,7 +188,7 @@ pub fn decode<Args: 'static, Output: 'static>(bytes: &[u8]) -> Result<Box<dyn Ca
   type DecodeFn<Args, Output> = fn(u64, &[u8]) -> Result<Box<dyn Callable<Args, Output>>, CallError>;
 
   let absoluteAddr: usize = resolveRelative(envelope.relativeOffset);
-  // SAFETY: `absoluteAddr` was produced by `relativeOffsetOf` from a valid
+  // Safety: `absoluteAddr` was produced by `relativeOffsetOf` from a valid
   // `fn` item pointer in this exact executable, transmitted, and resolved back.
   //
   // Soundness relies strictly on both processes running the identical binary file

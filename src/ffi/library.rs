@@ -142,7 +142,7 @@ impl __Library<true>
     T::fromValue(raw)
   }
 
-  /// Fire-and-forget вариант: вызов без ожидания и типизации результата.
+  /// Fire-and-forget variant: a call without waiting for or typing the result.
   ///
   /// todo Должен быть полностью скрыт и не работать напрямую
   #[doc(hidden)]
@@ -201,8 +201,8 @@ macro_rules! callv {
   };
 }
 
-// Варианта с `let a = call!(` нет. Потому что ты либо void ждешь, либо указываешь тип.
-// Было бы грубо делать иное указание типа, если ты можешь это сделать сразу в `let a:`.
+// There is no variant with `let a = call!(`. Because you either expect void, or specify the type.
+// It would be rough to require a different type specification if you can do it directly in `let a:`.
 
 // =================================================================================================
 

@@ -140,7 +140,8 @@ mod tests
   fn drop() -> ()
   {
     let (addr1, addr2): (usize, usize) = ffi!(|scope| {
-      let addr1: usize = {
+      let addr1: usize = 
+      {
         let mem: AllocatedMemory = scope.alloc(16)?;
         let a: usize = mem.address();
         // mem is dropped here, sending Free

@@ -40,14 +40,18 @@ impl ScopeGuard
   #[inline(always)]
   pub const fn new() -> Self
   {
-    Self { inner: UnsafeCell::new(None) }
+    Self {
+      inner: UnsafeCell::new(None)
+    }
   }
 }
 
-thread_local! {
+thread_local!{
+  // todo desc
   static ScopeStack: RefCell<Vec<*const ScopeGuard>> = const { RefCell::new(Vec::new()) };
 }
 
+// todo desc
 pub(super) fn resolveViaScope(name: &str) -> Option<String>
 {
   ScopeStack.with(|s| {

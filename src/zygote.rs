@@ -77,7 +77,7 @@ pub(super) enum FFIResponse
 /// Controls the zygote process and the communication channel with it.
 pub(super) struct ZygoteHandle
 {
-  /// Child zygote process
+  /// Child zygote process.
   process: Child,
   /// Socket for exchanging requests and responses with the process.
   pub(super) socket: UnixStream
@@ -102,6 +102,7 @@ pub struct ClonedZygote
 {
   /// Process PID.
   pub pid: libc::pid_t,
+  
   /// Socket for exchanging requests.
   pub socket: UnixStream
 }
@@ -193,7 +194,9 @@ impl Drop for ZygoteGuard
 // =================================================================================================
 
 /// Entry point of the child Zygote process;
+/// 
 /// main() must call this as the first line if the first argument == ZygoteFlag;
+/// 
 /// The process is spawned through Command (fork+exec) — runtime was not warmed up,
 /// there are no extra tasks, there is no metadata heap. The library is not loaded in advance.
 pub (super) fn runAsZygote() -> !
@@ -215,6 +218,7 @@ pub(super) fn initZygote() -> io::Result<()>
 }
 
 /// The zygote is spawned only through Command (fork+exec) at startup.
+/// 
 /// This is fundamental: a regular fork() from an already warmed-up multithreaded runtime
 /// (the supervisor is a separate thread) would inherit other mutexes in a locked state —
 /// which would create a deadlock trap.

@@ -13,13 +13,15 @@ use crate::zygote::{FFIRequest};
 use crate::ffi::callback::Callable;
 // =================================================================================================
 
-/// Callback registry inside the CLONE (not parent)
+/// Callback registry inside the clone (not parent)
 struct CallbackWrapper
 {
   /// The decoded Rust closure to be invoked.
   closure: Box<dyn Callable<Vec<Value>, Value>>,
+  
   /// Expected FFI argument types for correct deserialization.
   argTypes: Vec<Type>,
+  
   /// Expected FFI return type.
   returnType: Box<Type>
 }
@@ -29,16 +31,18 @@ struct CallbackEntry
 {
   /// Never read directly — kept alive purely for its `Drop` impl. `Closure`
   /// owns the JIT-compiled trampoline memory that `codePointer` points into;
+  /// 
   /// if this field were removed (or dropped early), `codePointer` would
   /// dangle the moment registration returns, and C would jump into freed
   /// memory on the very next call. This is intentional RAII, not dead code.
   #[allow(dead_code)]
   closure: Closure<'static>,
+  
   /// Raw C function pointer to the JIT-compiled trampoline.
   codePointer: *mut c_void
 }
 
-/// SAFETY: CallbackRegistry is used exclusively within a single fork-clone,
+/// Safety: CallbackRegistry is used exclusively within a single fork-clone,
 /// which operates as a single-threaded process.
 unsafe impl Send for CallbackEntry {}
 

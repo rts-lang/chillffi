@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value
 {
-  /// Just an empty value
+  /// Just an empty value.
   None,
   
   //
@@ -78,7 +78,7 @@ pub enum Value
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Type
 {
-  /// Just an empty value
+  /// Just an empty value.
   None,
   
   //
@@ -102,7 +102,7 @@ pub enum Type
   //
   Bool,
   
-  /// Raw pointer
+  /// Raw pointer.
   Pointer
 }
 
@@ -123,7 +123,7 @@ pub trait Primitive: Sized
   fn toValue(self) -> Value;
 }
 
-/// Объявляет связку примитива и `Value` типа.
+/// Declares a binding between a primitive and a `Value` type.
 macro_rules! implFFIPrimitive
 {
   ($rustType:ty, $variant:ident) =>
@@ -153,7 +153,7 @@ macro_rules! implFFIPrimitive
   };
 }
 
-// Объявление всех примитивных типов
+// Declaration of all primitive types
 implFFIPrimitive!(u8, U8);
 implFFIPrimitive!(u16, U16);
 implFFIPrimitive!(u32, U32);
@@ -175,7 +175,8 @@ impl Primitive for Pointer
   /// Extracts the address from a `Value::Pointer`.
   fn fromValue(value: Value) -> Result<Self, FFIError>
   {
-    match value {
+    match value 
+    {
       Value::Pointer(addr) => Ok(Pointer(addr)),
       _ => Err(FFIError::Other(format!("expected Pointer, got {:?}", value))),
     }
@@ -312,7 +313,8 @@ mod tests
 
   // ===============================================================================================
 
-  /// Checks pointer type handling: passing a valid pointer and receiving NULL for a missing variable.
+  /// Checks pointer type handling: passing a valid pointer 
+  /// and receiving NULL for a missing variable.
   #[test]
   fn pointer() -> ()
   {
