@@ -15,7 +15,7 @@ fn println(text: &str) -> Result<(), FFIError>
     let mut bytes: Vec<u8> = text.as_bytes().to_vec();
     bytes.push(0);
 
-    // todo desc
+    // Allocate memory and write null-terminated string bytes
     let mem: AllocatedMemory = scope.alloc(bytes.len())?;
     mem.write(Value::RawString(bytes))?;
 

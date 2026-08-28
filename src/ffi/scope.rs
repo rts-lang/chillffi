@@ -47,11 +47,11 @@ impl ScopeGuard
 }
 
 thread_local!{
-  // todo desc
+  /// Thread-local stack tracking active ScopeGuard pointers for the current thread.
   static ScopeStack: RefCell<Vec<*const ScopeGuard>> = const { RefCell::new(Vec::new()) };
 }
 
-// todo desc
+/// Resolves library name using local PathResolver of the innermost active scope.
 pub(super) fn resolveViaScope(name: &str) -> Option<String>
 {
   ScopeStack.with(|s| {

@@ -5,7 +5,7 @@ use chillffi::ffi::errors::FFIError;
 use chillffi::ffi;
 // =================================================================================================
 
-/// todo desc
+/// Get current real time via libc's clock_gettime
 fn main() -> ()
 {
   // clock_gettime(CLOCK_REALTIME, &timespec) — struct out-param via Alloc/ReadMemory,

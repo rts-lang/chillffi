@@ -132,8 +132,8 @@ impl<const Allowed: bool> Drop for __Library<Allowed>
 impl __Library<true>
 {
   /// Executes a function call from the loaded library.
-  /// 
-  /// todo Должен быть полностью скрыт и не работать напрямую
+  ///
+  /// todo It should be completely hidden and not work directly
   #[doc(hidden)]
   pub fn call<T: Primitive>(&self, functionName: &str, args: Vec<Value>) -> Result<T, FFIError>
   {
@@ -143,7 +143,7 @@ impl __Library<true>
 
   /// Fire-and-forget variant: a call without waiting for or typing the result.
   ///
-  /// todo Должен быть полностью скрыт и не работать напрямую
+  /// todo It should be completely hidden and not work directly
   #[doc(hidden)]
   pub fn callv(&self, functionName: &str, args: Vec<Value>) -> Result<(), FFIError>
   {
