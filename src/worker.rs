@@ -1,5 +1,5 @@
 use crate::ffi::callback;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RawMutex};
 use std::sync::OnceLock;
 use libffi::middle::Closure;
 use crate::ffi::errors::FFIError;
@@ -8,6 +8,7 @@ use libloading::Library;
 use libffi::middle::{Arg, Cif, CodePtr};
 use std::ffi::c_void;
 use fxhash::FxHashMap;
+use parking_lot::lock_api::MutexGuard;
 use crate::ffi::value::{Type, Value};
 use crate::zygote::{FFIRequest};
 use crate::ffi::callback::Callable;
@@ -57,7 +58,7 @@ thread_local! {
   ///
   /// `executeCall` checks this after the C call returns, producing a clean 
   /// `FFIError` instead of silently returning a default/zero value.
-  static CallbackPanicked: std::cell::Cell<bool> = std::cell::Cell::new(false);
+  static CallbackPanicked: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Initializes and returns a reference to the global callback registry.
@@ -210,10 +211,13 @@ fn prepareFFIArgs<'a>(
         storage.push(Box::new((vec, pointer, len))); // Saving the length
       }
       Value::Function(id) => {
-        let reg = registry().lock();
-        let entry: &CallbackEntry = reg.get(id)
-          .ok_or_else(|| FFIError::Other(format!("callback {} not registered", id)))?;
-        let codePointer: *mut c_void = entry.codePointer;
+        let codePointer: *mut c_void = {
+          let reg: MutexGuard<RawMutex, FxHashMap<u64, CallbackEntry>> = registry().lock();
+          let entry: &CallbackEntry = reg
+            .get(id)
+            .ok_or_else(|| FFIError::Other(format!("callback {} not registered", id)))?;
+          entry.codePointer
+        };
         storage.push(Box::new(codePointer));
       }
       Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
@@ -391,13 +395,14 @@ fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif,
     argsTypes.push(libffi::middle::Type::from(t));
   }
   let returnType: libffi::middle::Type = libffi::middle::Type::from(returnType);
-  Ok(libffi::middle::Cif::new(argsTypes.into_iter(), returnType))
+  Ok(libffi::middle::Cif::new(argsTypes, returnType))
 }
 
 /// Safely reads a raw C pointer and converts it into a Rust `Value` based on the specified `Type`.
-fn readArg(ptr: *const std::ffi::c_void, typ: &Type) -> Value
+const fn readArg(ptr: *const std::ffi::c_void, t: &Type) -> Value
 {
-  match typ {
+  match t 
+  {
     Type::None => Value::None,
     Type::U8 => Value::U8(unsafe { *(ptr as *const u8) }),
     Type::U16 => Value::U16(unsafe { *(ptr as *const u16) }),
@@ -492,7 +497,7 @@ pub(super) fn executeFFI(
       let closure: Closure = Closure::new(cif, trampoline, leaked);
       let codeAddr: usize = *closure.code_ptr() as usize;
       let codePointer: *mut c_void = codeAddr as *mut c_void;
-      registry().lock().insert(id, CallbackEntry { closure, codePointer: codePointer });
+      registry().lock().insert(id, CallbackEntry { closure, codePointer });
       Ok(Value::None)
     }
   }

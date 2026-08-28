@@ -42,7 +42,6 @@ fn registerLibrary(id: usize, path: &str) -> ()
 
 /// Removes a library from the registry by its identifier.
 #[inline]
-
 fn unregisterLibrary(id: usize) -> ()
 {
   getRegistry().write().remove(&id);

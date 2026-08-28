@@ -177,7 +177,7 @@ impl Primitive for Pointer
   {
     match value 
     {
-      Value::Pointer(addr) => Ok(Pointer(addr)),
+      Value::Pointer(addr) => Ok(Self(addr)),
       _ => Err(FFIError::Other(format!("expected Pointer, got {:?}", value))),
     }
   }
@@ -212,7 +212,7 @@ impl From<Pointer> for usize
 impl From<Pointer> for Value
 {
   /// Converts a `Pointer` directly into a `Value::Pointer` variant.
-  fn from(p: Pointer) -> Self { Value::Pointer(p.0) }
+  fn from(p: Pointer) -> Self { Self::Pointer(p.0) }
 }
 
 // =================================================================================================

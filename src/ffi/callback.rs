@@ -144,7 +144,7 @@ pub struct Sendable<Args, Output, T: Callable<Args, Output> + Serialize>
 impl<Args: 'static, Output: 'static, T: Callable<Args, Output> + Serialize> Sendable<Args, Output, T>
 {
   #[doc(hidden)]
-  pub fn new(relativeOffset: usize, siteTag: u64, value: T) -> Self
+  pub const fn new(relativeOffset: usize, siteTag: u64, value: T) -> Self
   {
     Self { relativeOffset, siteTag, value, _marker: std::marker::PhantomData }
   }

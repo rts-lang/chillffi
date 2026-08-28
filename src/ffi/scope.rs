@@ -156,8 +156,8 @@ impl<'g> Scope<'g>
     sendRawRequest(FFIRequest::RegisterCallback {
       id,
       bytes,
-      argTypes: argTypes.clone(),
-      returnType: returnType.clone(),
+      argTypes,
+      returnType,
     }).expect("register callback failed");
 
     Value::Function(id)
