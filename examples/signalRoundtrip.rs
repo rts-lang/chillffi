@@ -31,7 +31,7 @@ fn main() -> ()
     let old: Pointer = call!(libc, "signal", 10 as i32, Pointer(0))?;
 
     // Call that address directly, bypassing signal() entirely.
-    callvPointer!(old, 10 as i32)?;
+    callvPointer!(scope, old, 10 as i32)?;
 
     Ok(())
   }).expect("signal roundtrip failed");

@@ -152,16 +152,16 @@ impl<'g> Scope<'g>
   /// `Library` to go through: a name is replaced by an address. `&self`
   /// because the address is only meaningful within the clone this `Scope`
   /// belongs to, same lifetime rule as `Value::Pointer` itself.
-  pub fn callPointer<T: Primitive>(pointer: impl Into<usize>, args: Vec<Value>) -> Result<T, FFIError>
+  pub fn callPointer<T: Primitive>(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<T, FFIError>
   {
     let raw: Value = sendRawRequest(FFIRequest::CallPointer { pointer: pointer.into(), args, resultType: T::TypeTag })?;
     T::fromValue(raw)
   }
 
   /// Fire-and-forget variant of `callPointer` — mirrors `Library::callv`.
-  pub fn callvPointer(pointer: impl Into<usize>, args: Vec<Value>) -> Result<(), FFIError>
+  pub fn callvPointer(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<(), FFIError>
   {
-    Self::callPointer::<()>(pointer, args)
+    self.callPointer::<()>(pointer, args)
   }
 
   // ===============================================================================================
@@ -198,15 +198,15 @@ impl<'g> Drop for Scope<'g>
 
 // =================================================================================================
 
-/// Calls a raw function pointer through a `Scope` — mirrors `call!` exactly:
-/// same `vec![$($args.into()),*]` argument handling, same generic-return
-/// inference. Only difference is the receiver (`Scope`, not `Library`) and
-/// what identifies the target (an address, not a name).
+// todo В целом это не совсем верно, scope тут не используется. Но защита на то, что использование
+// только внутри scope - должна быть. Поэтому это следует исправить.
+
+/// Calls a raw function pointer through a `Scope`.
 #[macro_export]
 macro_rules! callPointer 
 {
-  ($pointer:expr $(, $args:expr)* $(,)?) => {
-    $crate::ffi::scope::Scope::callPointer($pointer, vec![$($args.into()),*])
+  ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
+    $scope.callPointer($pointer, vec![$($args.into()),*])
   };
 }
 
@@ -214,8 +214,8 @@ macro_rules! callPointer
 #[macro_export]
 macro_rules! callvPointer 
 {
-  ($pointer:expr $(, $args:expr)* $(,)?) => {
-    $crate::ffi::scope::Scope::callvPointer($pointer, vec![$($args.into()),*])
+  ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
+    $scope.callvPointer($pointer, vec![$($args.into()),*])
   };
 }
 
