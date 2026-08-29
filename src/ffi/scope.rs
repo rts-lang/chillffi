@@ -1,6 +1,6 @@
 use crate::ffi::callback::{Callable, Sendable};
 use serde::Serialize;
-use crate::ffi::value::Type;
+use crate::ffi::value::{Type, Primitive};
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
 use std::cell::RefCell;
@@ -141,6 +141,31 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
+  /// Calls a raw function pointer directly — no `dlopen`/`dlsym`, the address
+  /// is already known. Typical source: a pointer *returned* by a previous
+  /// call (C ABI functions returning function pointers exist — e.g. libc's
+  /// `signal()` both takes and returns one), or read out of a dispatch table
+  /// via `readMemory`.
+  ///
+  /// Works exactly like `call!`/`Library::call` — same generic return type
+  /// inferred via `Primitive`, same argument handling — just without a
+  /// `Library` to go through: a name is replaced by an address. `&self`
+  /// because the address is only meaningful within the clone this `Scope`
+  /// belongs to, same lifetime rule as `Value::Pointer` itself.
+  pub fn callPointer<T: Primitive>(pointer: impl Into<usize>, args: Vec<Value>) -> Result<T, FFIError>
+  {
+    let raw: Value = sendRawRequest(FFIRequest::CallPointer { pointer: pointer.into(), args, resultType: T::TypeTag })?;
+    T::fromValue(raw)
+  }
+
+  /// Fire-and-forget variant of `callPointer` — mirrors `Library::callv`.
+  pub fn callvPointer(pointer: impl Into<usize>, args: Vec<Value>) -> Result<(), FFIError>
+  {
+    Self::callPointer::<()>(pointer, args)
+  }
+
+  // ===============================================================================================
+
   /// Registers a closure built with `callback!` as an FFI-callable function
   /// (e.g. a `qsort` comparator). Capture is explicit at the macro call site,
   /// this method only ships the already-built closure to the clone:
@@ -169,6 +194,29 @@ impl<'g> Scope<'g>
 impl<'g> Drop for Scope<'g>
 {
   fn drop(&mut self) -> () { ScopeStack.with(|s| { s.borrow_mut().pop(); }); }
+}
+
+// =================================================================================================
+
+/// Calls a raw function pointer through a `Scope` — mirrors `call!` exactly:
+/// same `vec![$($args.into()),*]` argument handling, same generic-return
+/// inference. Only difference is the receiver (`Scope`, not `Library`) and
+/// what identifies the target (an address, not a name).
+#[macro_export]
+macro_rules! callPointer 
+{
+  ($pointer:expr $(, $args:expr)* $(,)?) => {
+    $crate::ffi::scope::Scope::callPointer($pointer, vec![$($args.into()),*])
+  };
+}
+
+/// Fire-and-forget variant of `callPointer!` — mirrors `callv!`.
+#[macro_export]
+macro_rules! callvPointer 
+{
+  ($pointer:expr $(, $args:expr)* $(,)?) => {
+    $crate::ffi::scope::Scope::callvPointer($pointer, vec![$($args.into()),*])
+  };
 }
 
 // =================================================================================================
