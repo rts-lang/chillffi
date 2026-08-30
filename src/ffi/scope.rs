@@ -142,14 +142,6 @@ impl<'g> Scope<'g>
   // ===============================================================================================
 
   /// Reads a dynamically-typed C struct at `pointer`, shaped by `fields`.
-  ///
-  /// Unlike `AllocatedMemory::readStruct::<T: bytemuck::Pod>`, `T` doesn't
-  /// need to exist as a Rust type at compile time — `fields` is an
-  /// ordinary runtime value. Byte offsets (padding, alignment, nested
-  /// structs) are computed by libffi for the current ABI in the clone,
-  /// not assumed here. Field order in the result matches `fields`, not
-  /// names — `chillffi` stays positional, name↔index mapping is the
-  /// caller's (e.g. an RTS type bridge's) job.
   pub fn readDynamicStruct(pointer: impl Into<usize>, fields: &[Type]) -> Result<Vec<Value>, FFIError>
   {
     match sendRawRequest(FFIRequest::ReadDynamicStruct { pointer: pointer.into(), fields: fields.to_vec() })? {
@@ -158,8 +150,7 @@ impl<'g> Scope<'g>
     }
   }
 
-  /// Writes `values` into a dynamically-typed C struct at `pointer`,
-  /// shaped by `fields` — write-side mirror of `readDynamicStruct`.
+  /// Writes `values` into a dynamically-typed C struct at `pointer`.
   pub fn writeDynamicStruct(pointer: impl Into<usize>, fields: &[Type], values: &[Value]) -> Result<(), FFIError>
   {
     sendRawRequest(FFIRequest::WriteDynamicStruct {
@@ -175,12 +166,6 @@ impl<'g> Scope<'g>
   /// call (C ABI functions returning function pointers exist — e.g. libc's
   /// `signal()` both takes and returns one), or read out of a dispatch table
   /// via `readMemory`.
-  ///
-  /// Works exactly like `call!`/`Library::call` — same generic return type
-  /// inferred via `Primitive`, same argument handling — just without a
-  /// `Library` to go through: a name is replaced by an address. `&self`
-  /// because the address is only meaningful within the clone this `Scope`
-  /// belongs to, same lifetime rule as `Value::Pointer` itself.
   pub fn callPointer<T: Primitive>(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<T, FFIError>
   {
     let raw: Value = sendRawRequest(FFIRequest::CallPointer { pointer: pointer.into(), args, resultType: T::TypeTag })?;

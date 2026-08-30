@@ -65,8 +65,7 @@ pub(super) enum FFIRequest
   /// not assumed — this is what makes `Type::Struct` usable for shapes
   /// that don't exist as a Rust type at compile time.
   ReadDynamicStruct { pointer: usize, fields: Vec<Type> },
-  /// Writes `values` into a dynamically-typed struct at `pointer`,
-  /// laid out per `fields` — write-side mirror of `ReadDynamicStruct`.
+  /// Writes `values` into a dynamically-typed struct at `pointer`.
   WriteDynamicStruct { pointer: usize, fields: Vec<Type>, values: Vec<Value> },
 
   /// Parent sends a serialized closure; the clone deserializes and stores it.

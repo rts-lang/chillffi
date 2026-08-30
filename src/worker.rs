@@ -124,10 +124,11 @@ fn toCifTypes(value: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
     Value::String(_) => Ok(vec![libffi::middle::Type::pointer(), libffi::middle::Type::usize()]),
     Value::Function(_) => Ok(vec![libffi::middle::Type::pointer()]),
     Value::Struct(_) =>
-      // Passing a struct BY VALUE as a call argument is a distinct feature from
-      // readDynamicStruct/writeDynamicStruct (which work through a pointer) —
-      // technically reachable via Arg::new(bytes)/Type::structure(...), just not
-      // implemented yet. Write it into memory and pass Value::Pointer instead.
+      // todo:
+      //  Passing a struct BY VALUE as a call argument is a distinct feature from
+      //  readDynamicStruct/writeDynamicStruct (which work through a pointer) —
+      //  technically reachable via Arg::new(bytes)/Type::structure(...), just not
+      //  implemented yet. Write it into memory and pass Value::Pointer instead.
       Err(FFIError::Other(
         "Value::Struct by value as a call argument is not implemented — writeDynamicStruct + Pointer instead".to_string()
       )),
@@ -312,9 +313,10 @@ fn prepareFFIArgs<'a>(
         argsFfi.push(Arg::new(ptr));
       }
       Value::Struct(_) =>
-        // Unreachable in practice: the first pass above already returns Err
-        // on Value::Struct before this loop is ever entered. Kept only for
-        // match exhaustiveness now that Value::Struct exists.
+        // todo:
+        //  Unreachable in practice: the first pass above already returns Err
+        //  on Value::Struct before this loop is ever entered. Kept only for
+        //  match exhaustiveness now that Value::Struct exists.
         unreachable!("Value::Struct rejected in prepareFFIArgs' first pass"),
       Value::None => return Err(FFIError::BadArgument("Cannot pass Value::None".to_string()))
     }
@@ -424,10 +426,6 @@ fn buildCif(argTypes: &[Type], returnType: &Type) -> Result<libffi::middle::Cif,
 }
 
 /// Safely reads a raw C pointer and converts it into a Rust `Value` based on the specified `Type`.
-///
-/// No longer `const`: `Type::Struct` needs `readStructAt`, which allocates
-/// (`Vec` for offsets/fields) and calls into libffi — neither is const-fn
-/// compatible. The only caller (`trampoline`) is already a runtime context.
 fn readArg(ptr: *const std::ffi::c_void, t: &Type) -> Value
 {
   match t
@@ -447,13 +445,15 @@ fn readArg(ptr: *const std::ffi::c_void, t: &Type) -> Value
     Type::F64 => Value::F64(unsafe { *(ptr as *const f64) }),
     Type::Bool => Value::Bool(unsafe { *(ptr as *const u8) != 0 }),
     Type::Pointer => Value::Pointer(unsafe { *(ptr as *const usize) }),
-    // Struct-typed callback arguments (e.g. a qsort-style comparator taking
-    // a struct by value): `ptr` already points at the field's own bytes —
-    // same shape `readStructAt` expects. No error channel exists at this
-    // C-ABI boundary (same reasoning as `CallbackPanicked`), so a failure
-    // here — a genuinely malformed field list — degrades to `Value::None`
-    // rather than unwinding into C.
-    Type::Struct(fields) => readStructAt(ptr as usize, fields).unwrap_or(Value::None),
+    Type::Struct(fields) =>
+      // todo fix desc:
+      //  Struct-typed callback arguments (e.g. a qsort-style comparator taking
+      //  a struct by value): `ptr` already points at the field's own bytes —
+      //  same shape `readStructAt` expects. No error channel exists at this
+      //  C-ABI boundary (same reasoning as `CallbackPanicked`), so a failure
+      //  here — a genuinely malformed field list — degrades to `Value::None`
+      //  rather than unwinding into C.
+      readStructAt(ptr as usize, fields).unwrap_or(Value::None),
   }
 }
 
