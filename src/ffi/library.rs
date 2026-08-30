@@ -59,7 +59,8 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
     return Err(FFIError::ZygoteNotInitialized);
   }
 
-  // todo desc
+  // Retrieve the most recently pushed active zygote 
+  // from the thread-local stack to execute the raw FFI request.
   ZygoteStack.with(|stack| {
     let mut mutStack: RefMut<Vec<ClonedZygote>> = stack.borrow_mut();
     let zygote: &mut ClonedZygote = mutStack.last_mut().ok_or(FFIError::NoActiveZygoteScope)?;

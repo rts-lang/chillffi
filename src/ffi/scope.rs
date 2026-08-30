@@ -213,9 +213,9 @@ impl<'g> Drop for Scope<'g>
 
 // =================================================================================================
 
-// todo 
-//  В целом это не совсем верно, scope тут не используется. Но защита на то, что использование
-//  только внутри scope - должна быть. Поэтому это следует исправить.
+// todo
+//  In general, this is not entirely correct, scope is not used here. But protection that it is
+//  used only inside a scope should be present. Therefore, this should be fixed.
 
 /// Calls a raw function pointer through a [`Scope`].
 #[macro_export]

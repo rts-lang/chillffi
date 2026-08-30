@@ -97,7 +97,7 @@ unsafe extern "C" fn trampoline(
 
 // =================================================================================================
 
-/// Maps a Value variant to its corresponding libffi C ABI type(s).
+/// Maps a Value variant to its corresponding `libffi` C ABI type(s).
 #[inline]
 fn toCifTypes(value: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
 {
@@ -135,7 +135,7 @@ fn toCifTypes(value: &Value) -> Result<Vec<libffi::middle::Type>, FFIError>
 
 impl From<&Type> for libffi::middle::Type
 {
-  /// Specifies how many bytes libffi should read for the value.
+  /// Specifies how many bytes `libffi` should read for the value.
   #[inline]
   fn from(t: &Type) -> Self
   {

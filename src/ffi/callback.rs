@@ -122,7 +122,7 @@ pub(super) struct Envelope
   pub bytes: Vec<u8>
 }
 
-/// A concrete closure produced by [`ccallback!`], still on the originating side.
+/// A concrete closure produced by [`callback!`], still on the originating side.
 /// 
 /// Call it directly with [`Sendable::call`] — no process boundary
 /// involved — or [`Sendable::encode`] it to send across the zygote fork.
@@ -221,7 +221,8 @@ macro_rules! callback
 
       impl $crate::ffi::callback::Callable<$argTy, $retTy> for __CallImpl
       {
-        /// todo desc
+        /// Executes the captured closure by cloning 
+        /// the environment fields and applying the provided arguments.
         fn call(&self, $arg: $argTy) -> $retTy
         {
           $( let $name: $ty = self.$name.clone(); )*
@@ -240,21 +241,33 @@ macro_rules! callback
         $crate::ffi::callback::CallError
       >
       {
-        // todo desc
-        let expected: u64 = $crate::ffi::callback::tagOf(::std::concat!(::std::file!(), ":", ::std::line!(), ":", ::std::column!()));
+        // Recompute the expected site tag at the target location 
+        // to ensure the envelope came from this exact callback definition.
+        let expected: u64 = $crate::ffi::callback::tagOf(
+          ::std::concat!(::std::file!(), ":", ::std::line!(), ":", ::std::column!())
+        );
         if siteTag != expected {
-          return ::std::result::Result::Err($crate::ffi::callback::CallError::TypeMismatch { tag: siteTag });
+          return ::std::result::Result::Err(
+            $crate::ffi::callback::CallError::TypeMismatch { tag: siteTag }
+          );
         }
         
-        // todo desc
-        let (concrete, _): (__CallImpl, usize) = $crate::ffi::callback::__reexport::bincode::serde::decode_from_slice(
-          bytes, $crate::ffi::callback::__reexport::bincode::config::standard()
-        ).map_err(|e| $crate::ffi::callback::CallError::Decode(::std::string::ToString::to_string(&e)))?;
+        // Deserialize the captured environment bytes back 
+        // into the concrete anonymous struct instance.
+        let (concrete, _): (__CallImpl, usize) = 
+          $crate::ffi::callback::__reexport::bincode::serde::decode_from_slice(
+            bytes, $crate::ffi::callback::__reexport::bincode::config::standard()
+          ).map_err(|e| $crate::ffi::callback::CallError::Decode(
+            ::std::string::ToString::to_string(&e)
+          ))?;
         ::std::result::Result::Ok(::std::boxed::Box::new(concrete))
       }
 
-      // todo desc
-      let siteTag: u64 = $crate::ffi::callback::tagOf(::std::concat!(::std::file!(), ":", ::std::line!(), ":", ::std::column!()));
+      // Generate the unique site tag and calculate the relative offset 
+      // for this specific closure's decoder function.
+      let siteTag: u64 = $crate::ffi::callback::tagOf(
+        ::std::concat!(::std::file!(), ":", ::std::line!(), ":", ::std::column!())
+      );
       let relativeOffset: usize = $crate::ffi::callback::relativeOffsetOf(__callDecode as usize);
 
       $crate::ffi::callback::Sendable::new(relativeOffset, siteTag, __CallImpl { $( $name, )* })

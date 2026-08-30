@@ -61,7 +61,7 @@ pub(super) enum FFIRequest
   WriteMemory { pointer: usize, value: Value },
 
   /// Reads a dynamically-typed struct at `pointer`. Field byte offsets
-  /// (padding, alignment) are computed by libffi for the current ABI,
+  /// (padding, alignment) are computed by `libffi` for the current ABI,
   /// not assumed — this is what makes [`Type::Struct`] usable for shapes
   /// that don't exist as a Rust type at compile time.
   ReadDynamicStruct { pointer: usize, fields: Vec<Type> },
@@ -70,7 +70,8 @@ pub(super) enum FFIRequest
 
   /// Parent sends a serialized closure; the clone deserializes and stores it.
   RegisterCallback { id: u64, bytes: Vec<u8>, argTypes: Vec<Type>, returnType: Type },
-  /// todo desc
+  /// Calls a function directly by its raw memory pointer 
+  /// with the provided arguments and expected return type.
   CallPointer { pointer: usize, args: Vec<Value>, resultType: Type }
 }
 
@@ -312,13 +313,13 @@ fn zygoteLoop(mut socket: UnixStream) -> !
 /// Personal clone loop.
 fn cloneLoop(mut socket: UnixStream) -> !
 {
-  // todo desc (Нужен для кеша)
+  // Local cache for dynamically loaded libraries to avoid costly repeated dlopen calls.
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
 
   //
   loop
   {
-    // todo desc
+    // Wait for and read the incoming FFI request payload from the main runtime.
     let requestBytes: Vec<u8> = match readMessage(&mut socket)
     {
       Ok(bytes) => bytes,
@@ -327,14 +328,14 @@ fn cloneLoop(mut socket: UnixStream) -> !
         std::process::exit(0)
     };
 
-    // todo desc
+    // Execute the requested FFI operation using the cache and prepare the response.
     let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
     let encodedResponse: Vec<u8> = match encode(&response) {
       Ok(bytes) => bytes,
       Err(_) => std::process::exit(1),
     };
 
-    // todo desc
+    // Transmit the serialized execution result or error back to the parent process via IPC.
     if writeMessage(&mut socket, &encodedResponse).is_err() {
       std::process::exit(0);
     }
