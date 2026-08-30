@@ -54,10 +54,7 @@ thread_local!{
   /// Set by `trampoline` if the user's closure panics mid-call.
   ///
   /// Panics cannot propagate through C stack frames. `catch_unwind` traps it, 
-  /// and this flag becomes the only way to surface the error. 
-  ///
-  /// `executeCall` checks this after the C call returns, producing a clean 
-  /// `FFIError` instead of silently returning a default/zero value.
+  /// and this flag becomes the only way to surface the error.
   static CallbackPanicked: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -393,14 +390,16 @@ fn invokeFFI(cif: &Cif, codePointer: CodePtr, argsFfi: &[Arg], ffiResultType: &T
       let ptr: *mut c_void = unsafe{ cif.call::<*mut c_void>(codePointer, argsFfi) };
       Value::Pointer(ptr as usize)
     }
-    // `cif.call::<T>()` needs T: Sized known at compile time — impossible for
-    // a struct shaped by a runtime Vec<Type>. The real fix is `Ret::new` over
-    // a `Vec<u8>` buffer via `cif.call_return_into` (libffi-rs's `Ret`/`Arg`
-    // both accept `?Sized`, so this doesn't need the low-level `ffi_cif`
-    // dance) — a distinct feature from readDynamicStruct, not implemented yet.
-    Type::Struct(_) => return Err(FFIError::Other(
-      "returning a struct by value is not implemented — call with an out-param pointer and readDynamicStruct instead".to_string()
-    )),
+    Type::Struct(_) =>
+      // todo:
+      //  `cif.call::<T>()` needs T: Sized known at compile time — impossible for
+      //  a struct shaped by a runtime Vec<Type>. The real fix is `Ret::new` over
+      //  a `Vec<u8>` buffer via `cif.call_return_into` (libffi-rs's `Ret`/`Arg`
+      //  both accept `?Sized`, so this doesn't need the low-level `ffi_cif`
+      //  dance) — a distinct feature from readDynamicStruct, not implemented yet.
+      return Err(FFIError::Other(
+        "returning a struct by value is not implemented — call with an out-param pointer and readDynamicStruct instead".to_string()
+      ))
   })
 }
 
@@ -453,7 +452,7 @@ fn readArg(ptr: *const std::ffi::c_void, t: &Type) -> Value
       //  C-ABI boundary (same reasoning as `CallbackPanicked`), so a failure
       //  here — a genuinely malformed field list — degrades to `Value::None`
       //  rather than unwinding into C.
-      readStructAt(ptr as usize, fields).unwrap_or(Value::None),
+      readStructAt(ptr as usize, fields).unwrap_or(Value::None)
   }
 }
 
@@ -490,11 +489,10 @@ fn readStructAt(base: usize, fields: &[Type]) -> Result<Value, FFIError>
   {
     values.push(match field
     {
-      // Recurse directly (not via readArg) so a layout error in a nested
-      // struct field propagates as Err, instead of readArg's Value::None
-      // fallback — that fallback exists for the callback-trampoline case,
-      // which has no error channel; ReadDynamicStruct does.
-      Type::Struct(nested) => readStructAt(base + offset, nested)?,
+      Type::Struct(nested) =>
+        // Recurse directly so a layout error in a nested struct field propagates 
+        // as Err, instead of readArg's Value::None fallback.
+        readStructAt(base + offset, nested)?,
       _ => readArg((base + offset) as *const c_void, field),
     });
   }

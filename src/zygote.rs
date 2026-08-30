@@ -235,7 +235,7 @@ pub(super) fn initZygote() -> io::Result<()>
 ///
 /// exec() completely replaces the process image,
 /// therefore the Zygote is always born clean, regardless of how "heavy"
-/// the runtime has become by the time of respawn.
+/// the runtime has become by the time of startup.
 pub(super) fn spawnZygote() -> io::Result<ZygoteHandle>
 {
   // Creates a socket pair directly in RAM without filesystem involvement

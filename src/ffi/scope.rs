@@ -63,9 +63,9 @@ pub(super) fn resolveViaScope(name: &str) -> Option<String>
 
 // =================================================================================================
 
-/// A handle to the ScopeGuard of the current ffi!{}-block — borrows it for 'g.
+/// A handle to the ScopeGuard of the current [`ffi!`]-block — borrows it for 'g.
 ///
-/// That is precisely why AllocatedMemory<'g> cannot leave the block: the ScopeGuard,
+/// That is precisely why [`AllocatedMemory<'g>`] cannot leave the block: the ScopeGuard,
 /// which it borrows, is dropped at the boundary of the block, and this is checked by the compiler.
 pub struct Scope<'g>
 {
