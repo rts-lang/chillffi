@@ -191,7 +191,7 @@ fn zygoteEntrypoint() -> ()
 
 // =================================================================================================
 
-/// Internal items re-exported for the `ffi!` macro.  
+/// Internal items re-exported for the [`ffi!`] macro.  
 /// Not part of the public API; do not use directly.
 #[doc(hidden)]
 pub mod __ffiInternal {

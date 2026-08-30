@@ -62,7 +62,7 @@ pub(super) enum FFIRequest
 
   /// Reads a dynamically-typed struct at `pointer`. Field byte offsets
   /// (padding, alignment) are computed by libffi for the current ABI,
-  /// not assumed — this is what makes `Type::Struct` usable for shapes
+  /// not assumed — this is what makes [`Type::Struct`] usable for shapes
   /// that don't exist as a Rust type at compile time.
   ReadDynamicStruct { pointer: usize, fields: Vec<Type> },
   /// Writes `values` into a dynamically-typed struct at `pointer`.
@@ -205,7 +205,7 @@ impl Drop for ZygoteGuard
 
 /// Entry point of the child Zygote process;
 ///
-/// main() must call this as the first line if the first argument == ZygoteFlag;
+/// main() must call this as the first line if the first argument == [`ZygoteFlag`];
 ///
 /// The process is spawned through Command (fork+exec) — runtime was not warmed up,
 /// there are no extra tasks, there is no metadata heap. The library is not loaded in advance.
@@ -312,10 +312,13 @@ fn zygoteLoop(mut socket: UnixStream) -> !
 /// Personal clone loop.
 fn cloneLoop(mut socket: UnixStream) -> !
 {
+  // todo desc (Нужен для кеша)
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
 
+  //
   loop
   {
+    // todo desc
     let requestBytes: Vec<u8> = match readMessage(&mut socket)
     {
       Ok(bytes) => bytes,
@@ -324,12 +327,14 @@ fn cloneLoop(mut socket: UnixStream) -> !
         std::process::exit(0)
     };
 
+    // todo desc
     let response: FFIResponse = handleRequest(&requestBytes, &mut libraryCache);
     let encodedResponse: Vec<u8> = match encode(&response) {
       Ok(bytes) => bytes,
       Err(_) => std::process::exit(1),
     };
 
+    // todo desc
     if writeMessage(&mut socket, &encodedResponse).is_err() {
       std::process::exit(0);
     }
@@ -356,7 +361,7 @@ fn handleRequest(requestBytes: &[u8], cache: &mut FxHashMap<String, Library>) ->
 
 /// Supervisor: blocks on the death of the current zygote (waitpid) and recreates it.
 ///
-/// Separate thread — therefore spawnZygote() inside must go through Command, not fork().
+/// Separate thread — therefore [`spawnZygote()`] inside must go through Command, not fork().
 fn supervisorLoop() -> ()
 {
   loop

@@ -53,7 +53,7 @@ impl std::error::Error for CallError {}
 // =================================================================================================
 
 /// Base load address of the binary containing this very function. Every
-/// `callback!`-generated decode function and everything calling into this
+/// [`callback!`]-generated decode function and everything calling into this
 /// module is part of the same statically-linked executable, so probing from
 /// right here always resolves to the whole program's own base.
 #[doc(hidden)]
@@ -80,9 +80,8 @@ fn resolveRelative(offset: usize) -> usize
   moduleBase().wrapping_add(offset)
 }
 
-/// Deterministic (no ASLR / process-random seed — `fxhash` is a fixed
-/// algorithm, fixed seed) hash of a call-site source location into the tag
-/// embedded in every envelope from that site.
+/// Deterministic (no ASLR / process-random seed — `fxhash` is a fixed algorithm, fixed seed) 
+/// hash of a call-site source location into the tag embedded in every envelope from that site.
 #[doc(hidden)]
 pub fn tagOf(sourceLocation: &str) -> u64
 {
@@ -231,7 +230,7 @@ macro_rules! callback
       }
 
       /// Monomorphic, address-taken `fn` item — this address (relative to the
-      /// module base) is what actually crosses the wire; see `Sendable::new`.
+      /// module base) is what actually crosses the wire; see [`Sendable::new`].
       /// 
       /// Checks its own site tag first, so a resolution that landed
       /// here by mistake (only possible if the two processes are somehow not
@@ -274,7 +273,7 @@ mod tests
   use crate::ffi::callback::Callable;
   // ===============================================================================================
 
-/// Round-trips a closure through encode/decode within a single process.
+  /// Round-trips a closure through encode/decode within a single process.
   #[test]
   fn roundtrip() -> ()
   {
