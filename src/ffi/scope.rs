@@ -141,6 +141,35 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
+  /// Reads a dynamically-typed C struct at `pointer`, shaped by `fields`.
+  ///
+  /// Unlike `AllocatedMemory::readStruct::<T: bytemuck::Pod>`, `T` doesn't
+  /// need to exist as a Rust type at compile time — `fields` is an
+  /// ordinary runtime value. Byte offsets (padding, alignment, nested
+  /// structs) are computed by libffi for the current ABI in the clone,
+  /// not assumed here. Field order in the result matches `fields`, not
+  /// names — `chillffi` stays positional, name↔index mapping is the
+  /// caller's (e.g. an RTS type bridge's) job.
+  pub fn readDynamicStruct(pointer: impl Into<usize>, fields: &[Type]) -> Result<Vec<Value>, FFIError>
+  {
+    match sendRawRequest(FFIRequest::ReadDynamicStruct { pointer: pointer.into(), fields: fields.to_vec() })? {
+      Value::Struct(values) => Ok(values),
+      other => Err(FFIError::Other(format!("ReadDynamicStruct: expected Value::Struct, got {:?}", other))),
+    }
+  }
+
+  /// Writes `values` into a dynamically-typed C struct at `pointer`,
+  /// shaped by `fields` — write-side mirror of `readDynamicStruct`.
+  pub fn writeDynamicStruct(pointer: impl Into<usize>, fields: &[Type], values: &[Value]) -> Result<(), FFIError>
+  {
+    sendRawRequest(FFIRequest::WriteDynamicStruct {
+      pointer: pointer.into(), fields: fields.to_vec(), values: values.to_vec()
+    })?;
+    Ok(())
+  }
+
+  // ===============================================================================================
+
   /// Calls a raw function pointer directly — no `dlopen`/`dlsym`, the address
   /// is already known. Typical source: a pointer *returned* by a previous
   /// call (C ABI functions returning function pointers exist — e.g. libc's
@@ -159,6 +188,7 @@ impl<'g> Scope<'g>
   }
 
   /// Fire-and-forget variant of `callPointer` — mirrors `Library::callv`.
+  #[inline]
   pub fn callvPointer(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<(), FFIError>
   {
     self.callPointer::<()>(pointer, args)
@@ -203,7 +233,7 @@ impl<'g> Drop for Scope<'g>
 
 /// Calls a raw function pointer through a `Scope`.
 #[macro_export]
-macro_rules! callPointer 
+macro_rules! callPointer
 {
   ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
     $scope.callPointer($pointer, vec![$($args.into()),*])
@@ -212,7 +242,7 @@ macro_rules! callPointer
 
 /// Fire-and-forget variant of `callPointer!` — mirrors `callv!`.
 #[macro_export]
-macro_rules! callvPointer 
+macro_rules! callvPointer
 {
   ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
     $scope.callvPointer($pointer, vec![$($args.into()),*])
