@@ -241,8 +241,6 @@ macro_rules! callvPointer
 mod tests
 {
   use crate::ffi;
-  use crate::call;
-  use crate::callv;
   use crate::ffi::errors::FFIError;
   use crate::ffi::scope::Scope;
   use crate::ffi::value::{Pointer, Value};
@@ -254,7 +252,7 @@ mod tests
   {
     ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = call!(libc, "malloc", 16 as usize)?;
+      let ptr: Pointer = libc.call("malloc").arg(16 as usize).result()?;
 
       Scope::free(ptr)?;
       Ok(())
@@ -267,9 +265,13 @@ mod tests
   {
     let bytes: Vec<u8> = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = call!(libc, "malloc", 8 as usize)?;
+      let ptr: Pointer = libc.call("malloc").arg(8 as usize).result()?;
 
-      callv!(libc, "memset", ptr, 0xAB as i32, 8 as usize)?;
+      libc.call("memset")
+        .arg(ptr)
+        .arg(0xAB as i32)
+        .arg(8 as usize)
+        .void()?;
 
       let Value::RawString(readBytes) = Scope::readMemory(ptr, 8)? else {
         return Err(FFIError::Other("expected bytes".into()))
@@ -288,11 +290,11 @@ mod tests
   {
     let len: usize = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = call!(libc, "malloc", 32 as usize)?;
+      let ptr: Pointer = libc.call("malloc").arg(32 as usize).result()?;
 
       Scope::writeMemory(ptr, Value::CString(b"hello".to_vec()))?;
 
-      let result: usize = call!(libc, "strlen", ptr)?;
+      let result: usize = libc.call("strlen").arg(ptr).result()?;
 
       Scope::free(ptr)?;
       Ok(result)
