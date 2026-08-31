@@ -160,20 +160,25 @@ impl<'a> CallBuilder<'a>
 
   /// Append one argument. Chainable.
   #[inline]
-  pub fn arg(mut self, value: impl Into<Value>) -> Self {
+  pub fn arg<T>(mut self, value: T) -> Self
+  where
+    T: Into<Value>,
+  {
     self.args.push(value.into());
     self
   }
 
   /// Finalize: execute and return a typed result.
   #[inline]
-  pub fn result<T: Primitive>(self) -> Result<T, FFIError> {
+  pub fn result<T: Primitive>(self) -> Result<T, FFIError> 
+  {
     self.lib.__call(&self.name, self.args)
   }
 
   /// Finalize: execute and discard the result (void / fire-and-forget).
   #[inline]
-  pub fn void(self) -> Result<(), FFIError> {
+  pub fn void(self) -> Result<(), FFIError> 
+  {
     self.lib.__call::<()>(&self.name, self.args).map(|_| ())
   }
 }
@@ -299,7 +304,7 @@ mod tests
   {
     let result: f64 = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
-      Ok( libm.call("sqrt").arg(4.0 as f64).result()? )
+      Ok( libm.call("sqrt").arg::<f64>(4.0).result()? )
     }.expect("FFI call failed");
     
     assert!((result - 2.0).abs() < f64::EPSILON);
@@ -311,7 +316,7 @@ mod tests
   {
     let result: i32 = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
-      Ok( libm.call("abs").arg(-5 as i32).result()? )
+      Ok( libm.call("abs").arg::<i32>(-5).result()? )
     }.expect("FFI call failed");
     
     assert_eq!(result, 5);

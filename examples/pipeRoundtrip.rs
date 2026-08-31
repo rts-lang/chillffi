@@ -32,7 +32,7 @@ fn main() -> ()
     libc.call("write")
       .arg(writeFd)
       .arg(Value::RawString(b"hi".to_vec()))
-      .arg(2 as usize)
+      .arg::<usize>(2)
       .void()?;
 
     // Allocate memory buffer for reading
@@ -42,7 +42,7 @@ fn main() -> ()
     libc.call("read")
       .arg(readFd)
       .arg(bufMem.asPointer())
-      .arg(2 as usize)
+      .arg::<usize>(2)
       .void()?;
 
     // Read buffer contents from memory block

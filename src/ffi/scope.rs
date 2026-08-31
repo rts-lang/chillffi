@@ -252,7 +252,7 @@ mod tests
   {
     ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = libc.call("malloc").arg(16 as usize).result()?;
+      let ptr: Pointer = libc.call("malloc").arg::<usize>(16).result()?;
 
       Scope::free(ptr)?;
       Ok(())
@@ -265,12 +265,12 @@ mod tests
   {
     let bytes: Vec<u8> = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = libc.call("malloc").arg(8 as usize).result()?;
+      let ptr: Pointer = libc.call("malloc").arg::<usize>(8).result()?;
 
       libc.call("memset")
         .arg(ptr)
-        .arg(0xAB as i32)
-        .arg(8 as usize)
+        .arg::<i32>(0xAB)
+        .arg::<usize>(8)
         .void()?;
 
       let Value::RawString(readBytes) = Scope::readMemory(ptr, 8)? else {
@@ -290,7 +290,7 @@ mod tests
   {
     let len: usize = ffi!{
       let libc: Library = Library::load("libc.so.6")?;
-      let ptr: Pointer = libc.call("malloc").arg(32 as usize).result()?;
+      let ptr: Pointer = libc.call("malloc").arg::<usize>(32).result()?;
 
       Scope::writeMemory(ptr, Value::CString(b"hello".to_vec()))?;
 

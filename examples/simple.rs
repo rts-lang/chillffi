@@ -7,7 +7,7 @@ fn main() -> ()
   // Call sqrt(4.0)
   let result: f64 = ffi!{
     let libm: Library = Library::load("libm.so.6")?;
-    Ok( libm.call("sqrt").arg(4.0 as f64).result()? )
+    Ok( libm.call("sqrt").arg::<f64>(4.0).result()? )
   }.expect("FFI call failed");
 
   println!("sqrt(4.0) = {}", result);
@@ -16,7 +16,7 @@ fn main() -> ()
   // Call abs(-5)
   let result: i32 = ffi!{
     let libm: Library = Library::load("libm.so.6")?;
-    Ok( libm.call("abs").arg(-5 as i32).result()? )
+    Ok( libm.call("abs").arg::<i32>(-5).result()? )
   }.expect("FFI call failed");
 
   println!("abs(-5) = {}", result);

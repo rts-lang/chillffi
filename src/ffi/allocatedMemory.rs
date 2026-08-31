@@ -105,8 +105,8 @@ mod tests
       // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
       libc.call("memset")
         .arg(mem.asPointer())
-        .arg(0xAB as i32)
-        .arg(8 as usize)
+        .arg::<i32>(0xAB)
+        .arg::<usize>(8)
         .void()?;
 
       let Value::RawString(bytes) = mem.read()? else { 

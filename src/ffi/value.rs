@@ -239,19 +239,19 @@ mod tests
     ffi!{
       let libc: Library = Library::load("libc.so.6")?;
       
-      let resI8: i8 = libc.call("abs").arg(-5 as i8).result()?;
+      let resI8: i8 = libc.call("abs").arg::<i8>(-5).result()?;
       assert!(matches!(resI8, 5));
       
-      let resI16: i16 = libc.call("abs").arg(-15 as i16).result()?;
+      let resI16: i16 = libc.call("abs").arg::<i16>(-15).result()?;
       assert!(matches!(resI16, 15));
       
-      let resI32: i32 = libc.call("abs").arg(-42 as i32).result()?;
+      let resI32: i32 = libc.call("abs").arg::<i32>(-42).result()?;
       assert!(matches!(resI32, 42));
       
-      let resI64: i64 = libc.call("labs").arg(-100000 as i64).result()?;
+      let resI64: i64 = libc.call("labs").arg::<i64>(-100000).result()?;
       assert!(matches!(resI64, 100000));
       
-      let resIsize: isize = libc.call("labs").arg(-500 as isize).result()?;
+      let resIsize: isize = libc.call("labs").arg::<isize>(-500).result()?;
       assert!(matches!(resIsize, 500));
 
       Ok(())
@@ -270,35 +270,35 @@ mod tests
       let resU8: u8 = 
         libc.call("strnlen")
           .arg(Value::CString(b"a".to_vec()))
-          .arg(10 as u8)
+          .arg::<u8>(10)
           .result()?;
       assert!(matches!(resU8, 1));
       
       let resU16: u16 = 
         libc.call("strnlen")
         .arg(Value::CString(b"ab".to_vec()))
-        .arg(10 as u16)
+        .arg::<u16>(10)
         .result()?;
       assert!(matches!(resU16, 2));
       
       let resU32: u32 = 
         libc.call("strnlen")
         .arg(Value::CString(b"abc".to_vec()))
-        .arg(10 as u32)
+        .arg::<u32>(10)
         .result()?;
       assert!(matches!(resU32, 3));
       
       let resU64: u64 = 
         libc.call("strnlen")
         .arg(Value::CString(b"abcd".to_vec()))
-        .arg(10 as u64)
+        .arg::<u64>(10)
         .result()?;
       assert!(matches!(resU64, 4));
       
       let resUsize: usize = 
         libc.call("strnlen")
         .arg(Value::CString(b"abcde".to_vec()))
-        .arg(10 as usize)
+        .arg::<usize>(10)
         .result()?;
       assert!(matches!(resUsize, 5));
 
@@ -314,14 +314,19 @@ mod tests
   {
     let resultF32: f32 = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
-      Ok(libm.call("sqrtf").arg(16.0 as f32).result()?)
+      Ok( libm.call("sqrtf").arg::<f32>(16.0).result()? )
     }.expect("FFI F32 call failed");
     
     assert!((resultF32 - 4.0).abs() < f32::EPSILON);
 
     let resultF64: f64 = ffi!{
       let libm: Library = Library::load("libm.so.6")?;
-      Ok(libm.call("pow").arg(2.0 as f64).arg(3.0 as f64).result()?)
+      Ok(
+        libm.call("pow")
+          .arg::<f64>(2.0)
+          .arg::<f64>(3.0)
+          .result()?
+      )
     }.expect("FFI F64 call failed");
     
     assert!((resultF64 - 8.0).abs() < f64::EPSILON);

@@ -18,7 +18,7 @@ fn main() -> ()
 
     // Invoke the C function with the allocated pointer.
     libc.call("clock_gettime")
-      .arg(0 as i32 /* CLOCK_REALTIME */)
+      .arg::<i32>(0 /* CLOCK_REALTIME */)
       .arg(mem.asPointer())
       .void()?;
 

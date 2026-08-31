@@ -19,7 +19,7 @@ fn main() -> ()
 
     // Call clock_gettime(CLOCK_REALTIME, mem)
     libc.call("clock_gettime")
-      .arg(0 as i32)
+      .arg::<i32>(0)
       .arg(mem.asPointer())
       .void()?;
 

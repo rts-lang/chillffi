@@ -23,7 +23,7 @@ fn main() -> ()
     // Install it. The signal is never raised — signal() only stores and
     // returns pointers, delivery is irrelevant here.
     libc.call("signal")
-      .arg(10 as i32 /* SIGUSR1 */)
+      .arg::<i32>(10 /* SIGUSR1 */)
       .arg(handler)
       .void()?;
 
@@ -31,7 +31,7 @@ fn main() -> ()
     // that has to be the exact address we just installed above.
     let old: Pointer = 
       libc.call("signal")
-      .arg(10 as i32)
+      .arg::<i32>(10)
       .arg(Pointer(0))
       .result()?;
 

@@ -79,8 +79,8 @@ fn main() -> ()
     println!("[ffi!] Calling qsort(mem, 5, 4, compar)...");
     libc.call("qsort")
       .arg(mem.asPointer())
-      .arg(5 as usize)
-      .arg(4 as usize)
+      .arg::<usize>(5)
+      .arg::<usize>(4)
       .arg(compar)
       .void()?;
     println!("[ffi!] qsort returned\n");
