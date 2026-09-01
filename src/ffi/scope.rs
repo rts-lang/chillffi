@@ -1,7 +1,9 @@
+use crate::ffi::types::primitive::Arg;
+use crate::ffi::types::primitive::Callback;
 use crate::ffi::types::primitive::DynamicStruct;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::{Type, Value};
-use crate::ffi::callback::{Callable, Sendable};
+use crate::ffi::callback::{Sendable};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
@@ -199,15 +201,20 @@ impl<'g> Scope<'g>
   /// call (C ABI functions returning function pointers exist — e.g. libc's
   /// `signal()` both takes and returns one), or read out of a dispatch table
   /// via `readMemory`.
-  pub fn callPointer<T: Primitive>(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<T, FFIError>
+  pub fn callPointer<T: Primitive>(&self, pointer: impl Into<usize>, args: Vec<Arg>) -> Result<T, FFIError>
   {
-    let raw: Value = sendRawRequest(FFIRequest::CallPointer { pointer: pointer.into(), args, resultType: T::TypeTag })?;
+    let args: Vec<Value> = args.into_iter().map(|a: Arg| a.0).collect();
+    let raw: Value = sendRawRequest(FFIRequest::CallPointer { 
+      pointer: pointer.into(),
+      args, 
+      resultType: T::TypeTag 
+    })?;
     T::fromValue(raw)
   }
-
+  
   /// Fire-and-forget variant of `callPointer` — mirrors `Library::callv`.
   #[inline]
-  pub fn callvPointer(&self, pointer: impl Into<usize>, args: Vec<Value>) -> Result<(), FFIError>
+  pub fn callvPointer(&self, pointer: impl Into<usize>, args: Vec<Arg>) -> Result<(), FFIError>
   {
     self.callPointer::<()>(pointer, args)
   }
@@ -217,23 +224,22 @@ impl<'g> Scope<'g>
   /// Registers a closure built with [`callback!`] as an FFI-callable function
   /// (e.g. a `qsort` comparator). Capture is explicit at the macro call site,
   /// this method only ships the already-built closure to the clone:
-  pub fn callback<T>(&self, argTypes: Vec<Type>, returnType: Type, f: Sendable<Vec<Value>, Value, T>) -> Value
-  where
-    T: Callable<Vec<Value>, Value> + Serialize,
+  pub fn callback<State: Serialize + Send, Output: Primitive>(
+    &self,
+    f: Sendable<State, Output>
+  ) -> Callback
   {
     static nextID: AtomicU64 = AtomicU64::new(1);
     let id: u64 = nextID.fetch_add(1, Ordering::SeqCst);
 
-    let bytes: Vec<u8> = f.encode().expect("encode callback");
-
     sendRawRequest(FFIRequest::RegisterCallback {
-      id,
-      bytes,
-      argTypes,
-      returnType,
+      id, 
+      bytes: f.encode().expect("encode callback"),
+      argTypes: f.argTypes.clone(), 
+      returnType: f.returnType.clone(),
     }).expect("register callback failed");
 
-    Value::Function(id)
+    Callback(id)
   }
 
   // ===============================================================================================
@@ -312,7 +318,7 @@ impl FFIScope
 macro_rules! callPointer
 {
   ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
-    $scope.callPointer($pointer, vec![$($args.into()),*])
+    $scope.callPointer($pointer, vec![$($crate::ffi::types::primitive::Arg::from($args)),*])
   };
 }
 
@@ -321,7 +327,7 @@ macro_rules! callPointer
 macro_rules! callvPointer
 {
   ($scope:expr, $pointer:expr $(, $args:expr)* $(,)?) => {
-    $scope.callvPointer($pointer, vec![$($args.into()),*])
+    $scope.callvPointer($pointer, vec![$($crate::ffi::types::primitive::Arg::from($args)),*])
   };
 }
 

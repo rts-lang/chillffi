@@ -87,6 +87,18 @@ impl Primitive for Pointer
   fn toValue(self) -> Value { Value::Pointer(self.0) }
 }
 
+impl std::fmt::UpperHex for Pointer
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+  {
+    std::fmt::UpperHex::fmt(&self.0, f)
+  }
+}
+
+// =================================================================================================
+
+// None
+
 impl Primitive for ()
 {
   const TypeTag: Type = Type::None;
@@ -145,5 +157,22 @@ impl DynamicStruct
       .and_then(|v| T::fromValue(v.clone()))
   }
 }
+
+// =================================================================================================
+
+/// todo desc
+pub struct Callback(pub(crate) u64);
+
+// =================================================================================================
+
+/// Публичный заменитель [`Value`] для сигнатур публичных методов.
+///
+/// `Value` — `pub(crate)`, поэтому не может появляться в публичном API
+/// (`Scope::callPointer` и т.п.): вызов из внешнего крейта падает с
+/// E0603 «type is private». `Arg` оборачивает `Value`, строится из любого
+/// `FfiArg`-типа через `From` (включая `Callback`), разворачивается только
+/// внутри крейта.
+#[derive(Debug, Clone)]
+pub struct Arg(pub(crate) Value);
 
 // =================================================================================================

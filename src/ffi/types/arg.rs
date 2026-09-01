@@ -1,7 +1,8 @@
+use crate::ffi::types::primitive::Arg;
 use std::ffi::CStr;
 use std::ffi::CString;
 use crate::ffi::types::Value;
-use crate::ffi::types::primitive::Pointer;
+use crate::ffi::types::primitive::{Callback, Pointer};
 // =================================================================================================
 
 mod private
@@ -28,7 +29,30 @@ macro_rules! implSealedArg
     {
       fn intoFfiValue(self) -> Value { Value::from(self) }
     }
+
+    /// Public handle so macro-generated code in foreign crates can build
+    /// argument lists without naming `Value`.
+    impl From<$type> for Arg
+    {
+      fn from(v: $type) -> Self { Self(Value::from(v)) }
+    }
   };
+}
+
+impl From<Callback> for Arg
+{
+  /// todo desc
+  /// Callback — ручной Sealed, поэтому и From вручную
+  fn from(c: Callback) -> Self { Self(Value::Function(c.0)) }
+}
+
+// =================================================================================================
+
+// Callback
+
+impl private::Sealed for Callback
+{
+  fn intoFfiValue(self) -> Value { Value::Function(self.0) }
 }
 
 // =================================================================================================

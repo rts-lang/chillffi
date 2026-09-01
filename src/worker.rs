@@ -1,3 +1,4 @@
+use crate::ffi::callback::callbackArgs::CallbackArgs;
 use crate::ffi::types::{Type, Value};
 use crate::ffi::callback;
 use parking_lot::{Mutex, RawMutex};
@@ -11,14 +12,14 @@ use std::ffi::c_void;
 use fxhash::FxHashMap;
 use parking_lot::lock_api::MutexGuard;
 use crate::zygote::{FFIRequest};
-use crate::ffi::callback::Callable;
+use crate::ffi::callback::{ErasedCallable};
 // =================================================================================================
 
 /// Callback registry inside the clone (not parent).
 struct CallbackWrapper
 {
   /// The decoded Rust closure to be invoked.
-  closure: Box<dyn Callable<Vec<Value>, Value>>,
+  closure: ErasedCallable,
 
   /// Expected FFI argument types for correct deserialization.
   argTypes: Vec<Type>,
@@ -87,7 +88,7 @@ unsafe extern "C" fn trampoline(
   // On panic, we signal the thread-local flag and return a dummy `None` value 
   // so C code can gracefully resume (and eventually return control to our safe wrapper).
   let result: Value =
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| userdata.closure.call(rustArgs)))
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| userdata.closure.call(rustArgs.into())))
       .unwrap_or_else(|_| {
         CallbackPanicked.with(|f| f.set(true));
         Value::None
@@ -630,7 +631,7 @@ pub(super) fn executeFFI(
     }
 
     FFIRequest::RegisterCallback { id, bytes, argTypes, returnType } => {
-      let wrapper: Box<dyn Callable<Vec<Value>, Value>> = callback::decode(&bytes)
+      let wrapper: callback::ErasedCallable = callback::decode(&bytes)
         .map_err(|e| FFIError::Other(format!("call decode failed: {e}")))?;
       let cif: Cif = buildCif(&argTypes, &returnType)?;
       let leaked: &mut CallbackWrapper = Box::leak(Box::new(CallbackWrapper {

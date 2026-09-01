@@ -82,7 +82,7 @@ pub(crate) enum Value
 /// for defining FFI arguments and result.
 ///
 /// todo: add unit tests for Type variants verification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 pub enum Type
 {
   /// Just an empty value.
