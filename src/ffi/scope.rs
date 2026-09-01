@@ -1,6 +1,6 @@
 use crate::ffi::types::primitive::Arg;
 use crate::ffi::types::primitive::Callback;
-use crate::ffi::types::primitive::DynamicStruct;
+use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::{Type, Value};
 use crate::ffi::callback::{Sendable};
@@ -171,13 +171,13 @@ impl<'g> Scope<'g>
   pub fn readDynamicStruct(
     pointer: impl Into<usize>,
     fields: &[Type],
-  ) -> Result<DynamicStruct, FFIError> 
+  ) -> Result<DynamicList, FFIError> 
   {
     match sendRawRequest(FFIRequest::ReadDynamicStruct {
       pointer: pointer.into(),
       fields: fields.to_vec(),
     })? {
-      Value::Struct(values) => Ok(DynamicStruct::fromValues(values)),
+      Value::Struct(values) => Ok(DynamicList::fromValues(values)),
       other => Err(FFIError::Other(format!(
         "ReadDynamicStruct: expected Value::Struct, got {:?}",
         other

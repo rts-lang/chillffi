@@ -1,9 +1,7 @@
-pub mod callbackArgs;
-// =================================================================================================
-use crate::ffi::callback::callbackArgs::CallbackArgs;
+use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::Type;
 use crate::ffi::types::Value;
-use crate::ffi::types::primitive::Primitive;
+use crate::ffi::types::primitive::{Primitive};
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use fxhash::FxHasher;
@@ -65,7 +63,7 @@ impl std::error::Error for CallError {}
 
 // =================================================================================================
 
-/// Base load address of the binary containing this very function. (без изменений)
+/// Base load address of the binary containing this very function.
 #[doc(hidden)]
 pub fn moduleBase() -> usize
 {
@@ -74,19 +72,20 @@ pub fn moduleBase() -> usize
   info.dli_fbase as usize
 }
 
-/// Turns an absolute function pointer (in *this* process) into an offset. (без изменений)
+/// Turns an absolute function pointer (in *this* process) into an offset.
 #[doc(hidden)]
 pub fn relativeOffsetOf(absoluteAddr: usize) -> usize
 {
   absoluteAddr.wrapping_sub(moduleBase())
 }
 
+/// todo desc
 fn resolveRelative(offset: usize) -> usize
 {
   moduleBase().wrapping_add(offset)
 }
 
-/// Deterministic hash of a call-site source location. (без изменений)
+/// Deterministic hash of a call-site source location.
 #[doc(hidden)]
 pub fn tagOf(sourceLocation: &str) -> u64
 {
@@ -163,7 +162,7 @@ pub struct Sendable<State: Serialize + Send, Output: Primitive>
   state: State,
 
   /// Typed, same-process entry point into the closure body.
-  typedFn: fn(&State, &CallbackArgs) -> Output
+  typedFn: fn(&State, &DynamicList) -> Output
 }
 
 impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
@@ -175,7 +174,7 @@ impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
     argTypes: Vec<Type>,
     returnType: Type,
     state: State,
-    typedFn: fn(&State, &CallbackArgs) -> Output
+    typedFn: fn(&State, &DynamicList) -> Output
   ) -> Self
   {
     Self { relativeOffset, siteTag, argTypes, returnType, state, typedFn }
@@ -183,7 +182,7 @@ impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
 
   /// Calls the closure directly, in this process. Equivalent to calling the
   /// original closure — this never touches IPC or pointer resolution.
-  pub fn call(&self, args: &CallbackArgs) -> Output
+  pub fn call(&self, args: &DynamicList) -> Output
   {
     (self.typedFn)(&self.state, args)
   }
@@ -218,7 +217,7 @@ impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
 /// `pub(crate)`.
 pub struct ErasedCallable
 {
-  inner: Box<dyn Callable<CallbackArgs, Value>>
+  inner: Box<dyn Callable<DynamicList, Value>>
 }
 
 impl ErasedCallable
@@ -228,7 +227,7 @@ impl ErasedCallable
   #[doc(hidden)]
   pub fn fromStateAndFn<State: Send + 'static, Output: Primitive + 'static>(
     state: State,
-    typedFn: fn(&State, &CallbackArgs) -> Output
+    typedFn: fn(&State, &DynamicList) -> Output
   ) -> Self
   {
     Self { inner: Box::new(StateFnAdapter { state, typedFn }) }
@@ -237,7 +236,7 @@ impl ErasedCallable
   /// Invokes the erased closure with dynamic arguments and returns the
   /// dynamic result. `pub(crate)`: only this crate's dispatcher (running
   /// inside the clone) ever needs it — `Value` is `pub(crate)`.
-  pub(crate) fn call(&self, args: CallbackArgs) -> Value
+  pub(crate) fn call(&self, args: DynamicList) -> Value
   {
     self.inner.call(args)
   }
@@ -249,12 +248,12 @@ impl ErasedCallable
 struct StateFnAdapter<State: Send + 'static, Output: Primitive + 'static>
 {
   state: State,
-  typedFn: fn(&State, &CallbackArgs) -> Output
+  typedFn: fn(&State, &DynamicList) -> Output
 }
 
-impl<State: Send + 'static, Output: Primitive + 'static> Callable<CallbackArgs, Value> for StateFnAdapter<State, Output>
+impl<State: Send + 'static, Output: Primitive + 'static> Callable<DynamicList, Value> for StateFnAdapter<State, Output>
 {
-  fn call(&self, args: CallbackArgs) -> Value
+  fn call(&self, args: DynamicList) -> Value
   {
     // The typed entry point returns the closure's concrete return type;
     // convert it to the dynamic form the C-side marshalling understands.
@@ -306,6 +305,8 @@ pub fn decode(bytes: &[u8]) -> Result<ErasedCallable, CallError>
 /// foreign crates) and needs neither `serde` nor `bincode` at the call site:
 /// captures travel as a plain tuple (serde has blanket impls for those), and
 /// bincode is reached through `__reexport`.
+/// 
+/// todo desc - следует описать между строк не много, но что в целом происходит тут.
 #[macro_export]
 macro_rules! callback
 {
@@ -318,7 +319,7 @@ macro_rules! callback
       #[allow(unused_variables, unused_mut)]
       fn __callTyped(
         state: &($($ty,)*),
-        args: &$crate::ffi::callback::callbackArgs::CallbackArgs
+        args: &$crate::ffi::types::primitive::DynamicList
       ) -> $retTy
       {
         // Clone the captured tuple out — the same closure may run many times.

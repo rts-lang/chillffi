@@ -2,7 +2,7 @@ use chillffi::ffi::types::Type;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::scope::Scope;
 use chillffi::ffi;
-use chillffi::ffi::types::primitive::DynamicStruct;
+use chillffi::ffi::types::primitive::DynamicList;
 // =================================================================================================
 
 /// Call clock_gettime and extract fields using dynamic struct layouts.
@@ -24,7 +24,7 @@ fn main() -> ()
       .void()?;
 
     // Read dynamically shaped struct from memory using libffi ABI rules
-    let fields: DynamicStruct = Scope::readDynamicStruct(mem.address(), &timespecShape)?;
+    let fields: DynamicList = Scope::readDynamicStruct(mem.address(), &timespecShape)?;
 
     // Parse extracted fields
     Ok((fields.get(0)?, fields.get(1)?))

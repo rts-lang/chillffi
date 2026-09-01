@@ -1,4 +1,3 @@
-use crate::ffi::callback::callbackArgs::CallbackArgs;
 use crate::ffi::types::{Type, Value};
 use crate::ffi::callback;
 use parking_lot::{Mutex, RawMutex};

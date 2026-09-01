@@ -1,28 +1,8 @@
-
 use std::ffi::CStr;
 use std::ffi::CString;
 use crate::ffi::errors::FFIError;
 use crate::ffi::types::Value;
-use crate::ffi::types::primitive::Pointer;
 // =================================================================================================
-
-// Pointer
-
-impl From<Pointer> for usize
-{
-  /// Extracts the underlying `usize` memory address from a [`Pointer`].
-  fn from(p: Pointer) -> Self { p.0 }
-}
-
-impl From<Pointer> for Value
-{
-  /// Converts a [`Pointer`] directly into a [`Value::Pointer`] variant.
-  fn from(p: Pointer) -> Self { Self::Pointer(p.0) }
-}
-
-// =================================================================================================
-
-// Strings
 
 impl From<String> for Value
 {

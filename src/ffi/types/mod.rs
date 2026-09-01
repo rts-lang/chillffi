@@ -1,6 +1,5 @@
 // =================================================================================================
 pub mod arg;
-pub mod conversions;
 pub mod primitive;
 // =================================================================================================
 use serde::{Deserialize, Serialize};
@@ -82,7 +81,10 @@ pub(crate) enum Value
 /// for defining FFI arguments and result.
 ///
 /// todo: add unit tests for Type variants verification
+/// 
+/// todo: В целом его должно быть полностью не видно и нельзя использовать отдельно.
 #[derive(Debug, Clone, Serialize, Deserialize, Hash)]
+#[doc(hidden)]
 pub enum Type
 {
   /// Just an empty value.
