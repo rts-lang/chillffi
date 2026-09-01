@@ -1,7 +1,7 @@
-use crate::ffi::types::types::Type;
+use crate::ffi::types::Type;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::arg::FfiArg;
-use crate::ffi::types::types::Value;
+use crate::ffi::types::Value;
 use std::cell::RefMut;
 use std::marker::PhantomData;
 use parking_lot::RwLockReadGuard;

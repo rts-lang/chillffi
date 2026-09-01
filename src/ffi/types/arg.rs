@@ -1,12 +1,12 @@
 use std::ffi::CStr;
 use std::ffi::CString;
+use crate::ffi::types::Value;
 use crate::ffi::types::primitive::Pointer;
-use crate::ffi::types::types::Value;
 // =================================================================================================
 
 mod private
 {
-  use crate::ffi::types::types::Value;
+  use crate::ffi::types::Value;
 
 pub trait Sealed
   {

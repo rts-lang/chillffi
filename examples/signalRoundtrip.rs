@@ -1,4 +1,4 @@
-use crate::ffi::types::types::Type;
+use crate::ffi::types::Type;
 use crate::ffi::types::primitive::Pointer;
 use chillffi::callback;
 use chillffi::callvPointer;

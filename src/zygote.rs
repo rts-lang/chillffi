@@ -1,5 +1,4 @@
-use crate::ffi::types::types::Type;
-use crate::ffi::types::types::Value;
+use crate::ffi::types::{Type, Value};
 use parking_lot::MutexGuard;
 use parking_lot::Mutex;
 use std::sync::OnceLock;

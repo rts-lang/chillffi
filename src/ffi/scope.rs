@@ -1,6 +1,6 @@
 use crate::ffi::types::primitive::DynamicStruct;
 use crate::ffi::types::primitive::Primitive;
-use crate::ffi::types::types::Type;
+use crate::ffi::types::{Type, Value};
 use crate::ffi::callback::{Callable, Sendable};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
@@ -12,7 +12,6 @@ use std::cell::UnsafeCell;
 use crate::ffi::allocatedMemory::AllocatedMemory;
 use crate::ffi::errors::FFIError;
 use crate::ffi::library::{sendRawRequest, nextLibraryId, registerLibrary, Library};
-use crate::ffi::types::types::Value;
 use crate::zygote::{ClonedZygote, FFIRequest, ZygoteGuard};
 // =================================================================================================
 

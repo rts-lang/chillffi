@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 use std::ffi::CString;
 use crate::ffi::errors::FFIError;
-use crate::ffi::types::types::Value;
+use crate::ffi::types::Value;
 use crate::ffi::types::primitive::Pointer;
 // =================================================================================================
 

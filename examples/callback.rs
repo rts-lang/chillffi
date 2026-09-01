@@ -1,4 +1,4 @@
-use crate::ffi::types::types::Type;
+use crate::ffi::types::Type;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use std::cmp::Ordering;
 use chillffi::callback;
@@ -28,7 +28,7 @@ fn main() -> ()
     
     // Write the source data into the allocated clone memory.
     let raw: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
-    mem.write(Value::RawString(raw.to_vec()))?;
+    mem.write(raw)?;
     println!("[ffi!] Written raw bytes to clone memory\n");
 
     // Empty capture list — the comparator takes nothing from the outer scope,
@@ -86,8 +86,7 @@ fn main() -> ()
     println!("[ffi!] qsort returned\n");
     
     // Read the sorted memory block back into the parent process.
-    let Value::RawString(bytes) = mem.read()? else { panic!() };
-    println!("[ffi!] Read back raw bytes: {:?}\n", bytes);
+    let bytes: Vec<u8> = mem.read()?;
     
     // Reconstruct the Rust vector from the raw bytes.
     let vec: Vec<i32> = bytes.chunks_exact(4)

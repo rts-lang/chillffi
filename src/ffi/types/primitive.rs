@@ -1,6 +1,6 @@
-use crate::ffi::types::types::Value;
+use crate::ffi::types::Value;
 use crate::ffi::errors::FFIError;
-use crate::ffi::types::types::Type;
+use crate::ffi::types::Type;
 // =================================================================================================
 
 /// Wrapper for a raw memory address.
@@ -107,7 +107,6 @@ impl Primitive for ()
 // =================================================================================================
 
 // DynamicStruct
-
 
 /// Динамическая структура, прочитанная из памяти.
 /// Поля доступны по индексу с автоматическим приведением к нужному Rust-типу.

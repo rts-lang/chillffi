@@ -1,4 +1,4 @@
-use crate::ffi::types::types::Type;
+use crate::ffi::types::Type;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::scope::Scope;
 use chillffi::ffi;
