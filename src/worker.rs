@@ -1,7 +1,6 @@
 use crate::ffi::callback::decode;
-use crate::ffi::callback::erased::ErasedCallable;
+use crate::ffi::callback::ErasedCallable;
 use crate::ffi::types::{Type, Value};
-use crate::ffi::callback;
 use parking_lot::{Mutex, RawMutex};
 use std::sync::OnceLock;
 use libffi::middle::Closure;

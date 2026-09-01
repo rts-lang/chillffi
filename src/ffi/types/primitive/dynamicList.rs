@@ -1,8 +1,14 @@
-use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::errors::FFIError;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::Value;
 // =================================================================================================
+
+/// Динамический список FFI значений.
+pub struct DynamicList
+{
+  /// todo desc
+  values: Vec<Value>
+}
 
 impl DynamicList 
 {

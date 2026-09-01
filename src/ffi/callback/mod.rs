@@ -1,16 +1,21 @@
 pub mod sendable;
 pub mod addressing;
-pub mod erased;
-pub mod error;
 // =================================================================================================
-use crate::ffi::callback::error::CallError;
-use crate::ffi::callback::erased::ErasedCallable;
+mod erased;
+pub use erased::ErasedCallable;
+// =================================================================================================
+mod error;
+pub use error::CallError;
+// =================================================================================================
+mod envelope;
+pub(crate) use envelope::Envelope;
+// =================================================================================================
 use crate::ffi::callback::addressing::resolveRelative;
 use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::Type;
 use crate::ffi::types::Value;
 use crate::ffi::types::primitive::{Primitive};
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 // =================================================================================================
 
 /// Re-exported so macro-generated code can reach these without requiring the
@@ -36,27 +41,6 @@ pub trait Callable<Args, Output>: Send
 {
   /// Executes the captured closure with the provided arguments.
   fn call(&self, args: Args) -> Output;
-}
-
-// =================================================================================================
-
-/// Wire format: a relative pointer to the concrete decode function, both
-/// sanity tags, and the captured state's own serialized bytes.
-#[derive(Serialize, Deserialize)]
-#[doc(hidden)]
-pub(super) struct Envelope
-{
-  /// Offset of the target decode function relative to the module base.
-  pub relativeOffset: usize,
-
-  /// Hash of the argument and return types.
-  pub argsOutputTag: u64,
-
-  /// Hash of the source code location where the callback was defined.
-  pub siteTag: u64,
-
-  /// Serialized state of the captured variables.
-  pub bytes: Vec<u8>
 }
 
 // =================================================================================================
@@ -143,8 +127,8 @@ macro_rules! callback
         argsOutputTag: u64,
         bytes: &[u8]
       ) -> ::std::result::Result<
-        $crate::ffi::callback::erased::ErasedCallable,
-        $crate::ffi::callback::error::CallError
+        $crate::ffi::callback::ErasedCallable,
+        $crate::ffi::callback::CallError
       >
       {
         let expectedSiteTag: u64 = $crate::ffi::callback::addressing::tagOf(
@@ -152,7 +136,7 @@ macro_rules! callback
         );
         if siteTag != expectedSiteTag {
           return ::std::result::Result::Err(
-            $crate::ffi::callback::error::CallError::TypeMismatch { tag: siteTag }
+            $crate::ffi::callback::CallError::TypeMismatch { tag: siteTag }
           );
         }
 
@@ -162,7 +146,7 @@ macro_rules! callback
         );
         if argsOutputTag != expectedTypesTag {
           return ::std::result::Result::Err(
-            $crate::ffi::callback::error::CallError::ArgsOutputMismatch
+            $crate::ffi::callback::CallError::ArgsOutputMismatch
           );
         }
 
@@ -170,12 +154,12 @@ macro_rules! callback
           $crate::ffi::callback::__reexport::bincode::serde::decode_from_slice(
             bytes,
             $crate::ffi::callback::__reexport::bincode::config::standard()
-          ).map_err(|e| $crate::ffi::callback::error::CallError::Decode(
+          ).map_err(|e| $crate::ffi::callback::CallError::Decode(
             ::std::string::ToString::to_string(&e)
           ))?;
 
         ::std::result::Result::Ok(
-          $crate::ffi::callback::erased::ErasedCallable::fromStateAndFn(state, __callTyped)
+          $crate::ffi::callback::ErasedCallable::fromStateAndFn(state, __callTyped)
         )
       }
 

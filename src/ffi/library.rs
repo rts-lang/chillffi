@@ -1,6 +1,6 @@
 use crate::ffi::types::Type;
 use crate::ffi::types::primitive::Primitive;
-use crate::ffi::types::arg::FfiArg;
+use crate::ffi::types::primitive::FfiArg;
 use crate::ffi::types::Value;
 use std::cell::RefMut;
 use std::marker::PhantomData;

@@ -1,8 +1,20 @@
-use crate::ffi::types::primitive::Arg;
 use std::ffi::CStr;
 use std::ffi::CString;
 use crate::ffi::types::Value;
 use crate::ffi::types::primitive::{Callback, Pointer};
+// =================================================================================================
+
+/// todo desc (переписать)
+/// Публичный заменитель [`Value`] для сигнатур публичных методов.
+///
+/// `Value` — `pub(crate)`, поэтому не может появляться в публичном API
+/// (`Scope::callPointer` и т.п.): вызов из внешнего крейта падает с
+/// E0603 «type is private». `Arg` оборачивает `Value`, строится из любого
+/// `FfiArg`-типа через `From` (включая `Callback`), разворачивается только
+/// внутри крейта.
+#[derive(Debug, Clone)]
+pub struct Arg(pub(crate) Value);
+
 // =================================================================================================
 
 mod private

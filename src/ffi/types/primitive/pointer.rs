@@ -1,8 +1,12 @@
 use crate::ffi::errors::FFIError;
 use crate::ffi::types::primitive::Primitive;
-use crate::ffi::types::Type;
-use crate::ffi::types::primitive::Pointer;
-use crate::ffi::types::Value;
+use crate::ffi::types::{Value, Type};
+// =================================================================================================
+
+/// Wrapper for a raw memory address.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Pointer(pub usize);
+
 // =================================================================================================
 
 impl Primitive for Pointer
