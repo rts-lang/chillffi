@@ -1,13 +1,14 @@
-use crate::ffi::value::FfiArg;
+use crate::ffi::types::types::Type;
+use crate::ffi::types::primitive::Primitive;
+use crate::ffi::types::arg::FfiArg;
+use crate::ffi::types::types::Value;
 use std::cell::RefMut;
 use std::marker::PhantomData;
-use crate::ffi::value::Primitive;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLock;
 use crate::ffi::errors::FFIError;
 use fxhash::FxHashMap;
 use crate::zygote::ZygoteState;
-use crate::ffi::value::{Type, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{OnceLock};
 use crate::__ffiInternal::ClonedZygote;
@@ -253,7 +254,6 @@ mod tests
 {
   use crate::ffi;
   use crate::ffi::library::getRegistry;
-  use crate::ffi::value::Value;
   // ===============================================================================================
 
   /// Checks that library is removed from registry when explicitly dropped.

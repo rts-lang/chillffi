@@ -1,3 +1,5 @@
+use crate::ffi::types::types::Type;
+use crate::ffi::types::types::Value;
 use crate::ffi::callback;
 use parking_lot::{Mutex, RawMutex};
 use std::sync::OnceLock;
@@ -9,7 +11,6 @@ use libffi::middle::{Arg, Cif, CodePtr};
 use std::ffi::c_void;
 use fxhash::FxHashMap;
 use parking_lot::lock_api::MutexGuard;
-use crate::ffi::value::{Type, Value};
 use crate::zygote::{FFIRequest};
 use crate::ffi::callback::Callable;
 // =================================================================================================
@@ -156,7 +157,7 @@ impl From<&Type> for libffi::middle::Type
       Type::F64 => Self::f64(),
       Type::Bool => Self::u8(),
       Type::Pointer => Self::pointer(),
-      Type::Struct(fields) => Self::structure(fields.iter().map(Self::from).collect::<Vec<_>>())
+      Type::Struct(fields) => Self::structure(fields.iter().map(Self::from))
     }
   }
 }

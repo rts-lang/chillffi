@@ -1,6 +1,7 @@
+use crate::ffi::types::types::Type;
+use crate::ffi::types::primitive::Pointer;
 use chillffi::callback;
 use chillffi::callvPointer;
-use chillffi::ffi::value::{Value, Type, Pointer};
 use chillffi::ffi;
 // =================================================================================================
 

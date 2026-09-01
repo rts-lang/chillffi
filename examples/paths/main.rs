@@ -1,5 +1,5 @@
-use crate::ffi::value::Pointer;
 use chillffi::pathResolver::addGlobalSearchPath;
+use crate::ffi::types::primitive::Pointer;
 use chillffi::ffi;
 // =================================================================================================
 

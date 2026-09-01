@@ -1,8 +1,8 @@
-use crate::ffi::value::Pointer;
+use crate::ffi::types::primitive::Pointer;
+use crate::ffi::types::types::Value;
 use std::marker::PhantomData;
 use crate::ffi::errors::FFIError;
 use crate::ffi::library::sendRawRequest;
-use crate::ffi::value::Value;
 use crate::zygote::FFIRequest;
 // =================================================================================================
 
@@ -101,9 +101,8 @@ impl<'g> Drop for AllocatedMemory<'g>
 mod tests
 {
   use crate::ffi;
+  use crate::ffi::types::types::Value;
   use crate::ffi::allocatedMemory::AllocatedMemory;
-  use crate::ffi::errors::FFIError;
-  use crate::ffi::value::Value;
   // ===============================================================================================
 
   /// Checks reading memory via [`AllocatedMemory::read`].

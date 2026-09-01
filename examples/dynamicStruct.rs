@@ -1,5 +1,5 @@
+use crate::ffi::types::types::Type;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
-use chillffi::ffi::value::{Type, Value};
 use chillffi::ffi::errors::FFIError;
 use chillffi::ffi::scope::Scope;
 use chillffi::ffi;

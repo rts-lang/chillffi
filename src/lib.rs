@@ -29,7 +29,7 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use chillffi::ffi::value::{Value};
+//! use chillffi::ffi::types::{Value};
 //! use chillffi::ffi;
 //!
 //! fn main() -> ()
@@ -58,7 +58,7 @@
 //!
 //! ```no_run
 //! use chillffi::ffi::allocatedMemory::{AllocatedMemory};
-//! use chillffi::ffi::value::{Value};
+//! use chillffi::ffi::types::{Value};
 //! use chillffi::ffi::errors::FFIError;
 //! use chillffi::ffi;
 //!

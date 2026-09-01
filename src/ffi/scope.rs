@@ -1,6 +1,7 @@
+use crate::ffi::types::primitive::Primitive;
+use crate::ffi::types::types::Type;
 use crate::ffi::callback::{Callable, Sendable};
 use serde::Serialize;
-use crate::ffi::value::{Type, Primitive};
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;
 use std::cell::RefCell;
@@ -10,7 +11,7 @@ use std::cell::UnsafeCell;
 use crate::ffi::allocatedMemory::AllocatedMemory;
 use crate::ffi::errors::FFIError;
 use crate::ffi::library::{sendRawRequest, nextLibraryId, registerLibrary, Library};
-use crate::ffi::value::Value;
+use crate::ffi::types::types::Value;
 use crate::zygote::{ClonedZygote, FFIRequest, ZygoteGuard};
 // =================================================================================================
 
@@ -138,23 +139,25 @@ impl<'g> Scope<'g>
     Ok(())
   }
 
+  /// todo desc (изменилось функционал)
   /// Reads `length` bytes at `pointer` from the clone's memory.
   #[inline]
-  pub fn readMemory(pointer: impl Into<usize>, length: usize) -> Result<Value, FFIError>
+  pub fn readMemory(pointer: impl Into<usize>, length: usize) -> Result<Vec<u8>, FFIError> 
   {
-    sendRawRequest(FFIRequest::ReadMemory { 
-      pointer: pointer.into(), 
-      length 
-    })
+    let value: Value = sendRawRequest(FFIRequest::ReadMemory {
+      pointer: pointer.into(),
+      length,
+    })?;
+    value.try_into()
   }
 
+  /// todo desc (изменилось функционал)
   /// Writes data from [`Value`] into the clone's memory at `pointer`.
-  #[inline]
-  pub fn writeMemory(pointer: impl Into<usize>, value: Value) -> Result<(), FFIError>
+  pub fn writeMemory(pointer: impl Into<usize>, value: impl Into<Value>) -> Result<(), FFIError>
   {
-    sendRawRequest(FFIRequest::WriteMemory { 
-      pointer: pointer.into(), 
-      value 
+    sendRawRequest(FFIRequest::WriteMemory {
+      pointer: pointer.into(),
+      value: value.into(),
     })?;
     Ok(())
   }
@@ -321,10 +324,11 @@ macro_rules! callvPointer
 mod tests
 {
   use crate::ffi;
+  use crate::ffi::allocatedMemory::AllocatedMemory;
+  use crate::ffi::types::primitive::Pointer;
   use crate::ffi::errors::FFIError;
   use crate::ffi::library::Library;
   use crate::ffi::scope::Scope;
-  use crate::ffi::value::{Pointer, Value};
   use crate::ffi::scope::FFIScope;
   // ===============================================================================================
 
@@ -355,9 +359,7 @@ mod tests
         .arg::<usize>(8)
         .void()?;
 
-      let Value::RawString(readBytes) = Scope::readMemory(ptr, 8)? else {
-        return Err(FFIError::Other("expected bytes".into()))
-      };
+      let readBytes: Vec<u8> = Scope::readMemory(ptr, 8)?;
 
       Scope::free(ptr)?;
       Ok(readBytes)
@@ -374,7 +376,7 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       let ptr: Pointer = libc.call("malloc").arg::<usize>(32).result()?;
 
-      Scope::writeMemory(ptr, Value::CString(b"hello".to_vec()))?;
+      Scope::writeMemory(ptr, c"hello")?;
 
       let result: usize = libc.call("strlen").arg(ptr).result()?;
 
@@ -410,8 +412,8 @@ mod tests
 
       // 3. scope.alloc + writeMemory + strlen — AllocatedMemory<'g> is
       // bounded by `ffiScope` (via `scope`), proving the 'g lifetime is real.
-      let mem = scope.alloc(32)?;
-      Scope::writeMemory(mem.address(), Value::CString(b"retained".to_vec()))?;
+      let mem: AllocatedMemory = scope.alloc(32)?;
+      Scope::writeMemory(mem.address(), c"retained")?;
       let r2: usize = libc.call("strlen").arg(mem.address()).result()?;
 
       // mem drops here, sends Free, fine.

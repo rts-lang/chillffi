@@ -1,3 +1,5 @@
+use crate::ffi::types::types::Type;
+use crate::ffi::types::types::Value;
 use parking_lot::MutexGuard;
 use parking_lot::Mutex;
 use std::sync::OnceLock;
@@ -14,7 +16,6 @@ use bincode::config::Configuration;
 use fxhash::FxHashMap;
 use libloading::Library;
 use serde::{Serialize, Deserialize};
-use crate::ffi::value::{Type, Value};
 use crate::worker::executeFFI;
 // =================================================================================================
 

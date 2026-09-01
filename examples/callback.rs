@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
-use chillffi::ffi::value::{Value, Type};
-use chillffi::ffi;
+use crate::ffi::types::types::Type;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
+use std::cmp::Ordering;
 use chillffi::callback;
+use chillffi::ffi;
 // =================================================================================================
 
 /// Demonstrates passing a Rust closure as a C function pointer to `qsort` via FFI.
@@ -105,3 +105,5 @@ fn main() -> ()
   assert_eq!(sorted, vec![1, 1, 3, 4, 5]);
   println!("Assertion passed: [1, 1, 3, 4, 5] ✓");
 }
+
+// =================================================================================================
