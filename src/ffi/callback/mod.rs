@@ -1,10 +1,16 @@
+pub mod sendable;
+pub mod addressing;
+pub mod erased;
+pub mod error;
+// =================================================================================================
+use crate::ffi::callback::error::CallError;
+use crate::ffi::callback::erased::ErasedCallable;
+use crate::ffi::callback::addressing::resolveRelative;
 use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::Type;
 use crate::ffi::types::Value;
 use crate::ffi::types::primitive::{Primitive};
 use serde::{Deserialize, Serialize};
-use std::hash::{Hash, Hasher};
-use fxhash::FxHasher;
 // =================================================================================================
 
 /// Re-exported so macro-generated code can reach these without requiring the
@@ -34,86 +40,6 @@ pub trait Callable<Args, Output>: Send
 
 // =================================================================================================
 
-/// Errors from encoding, decoding, or resolving a sent closure.
-#[derive(Debug)]
-pub enum CallError
-{
-  /// The argument/return type tag carried in the envelope doesn't match the
-  /// tag embedded in the resolved decode function — caught by the target
-  /// function itself, before it deserializes anything.
-  ArgsOutputMismatch,
-
-  /// The resolved function's own embedded call-site tag doesn't match the
-  /// one in the envelope — caught by the target function itself, before it
-  /// deserializes anything. In practice this means the two processes are not
-  /// actually running the same binary, which this module assumes never happens.
-  TypeMismatch { tag: u64 },
-
-  /// Serialization of the closure or envelope failed.
-  Encode(String),
-  /// Deserialization of the closure or envelope failed.
-  Decode(String)
-}
-
-impl std::fmt::Display for CallError
-{
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{:?}", self) }
-}
-impl std::error::Error for CallError {}
-
-// =================================================================================================
-
-/// Base load address of the binary containing this very function.
-#[doc(hidden)]
-pub fn moduleBase() -> usize
-{
-  let mut info: libc::Dl_info = unsafe{ std::mem::zeroed() };
-  unsafe{ libc::dladdr(moduleBase as *const () as *const libc::c_void, &mut info) };
-  info.dli_fbase as usize
-}
-
-/// Turns an absolute function pointer (in *this* process) into an offset.
-#[doc(hidden)]
-pub fn relativeOffsetOf(absoluteAddr: usize) -> usize
-{
-  absoluteAddr.wrapping_sub(moduleBase())
-}
-
-/// todo desc
-fn resolveRelative(offset: usize) -> usize
-{
-  moduleBase().wrapping_add(offset)
-}
-
-/// Deterministic hash of a call-site source location.
-#[doc(hidden)]
-pub fn tagOf(sourceLocation: &str) -> u64
-{
-  let mut hasher: FxHasher = fxhash::FxHasher::default();
-  sourceLocation.hash(&mut hasher);
-  hasher.finish()
-}
-
-/// Deterministic hash of the argument/return [`Type`]s a callback was
-/// declared with. Both sides of the wire compute it independently — the
-/// sender in [`Sendable::encode`], the receiver inside the macro-generated
-/// decode function — so an Args/Output mismatch is caught before the
-/// captured state is deserialized.
-///
-/// Replaces the old `argsOutputTagOf::<Args, Output>()` (it hashed
-/// `type_name`s of generic parameters that no longer exist at the decode
-/// site now that `decode` is type-erased).
-#[doc(hidden)]
-pub fn typesTagOf(argTypes: &[Type], returnType: &Type) -> u64
-{
-  let mut hasher: FxHasher = FxHasher::default();
-  argTypes.hash(&mut hasher);
-  returnType.hash(&mut hasher);
-  hasher.finish()
-}
-
-// =================================================================================================
-
 /// Wire format: a relative pointer to the concrete decode function, both
 /// sanity tags, and the captured state's own serialized bytes.
 #[derive(Serialize, Deserialize)]
@@ -131,134 +57,6 @@ pub(super) struct Envelope
 
   /// Serialized state of the captured variables.
   pub bytes: Vec<u8>
-}
-
-// =================================================================================================
-
-/// A concrete closure produced by [`callback!`], still on the originating side.
-///
-/// `State` is the tuple of captured variables, `Output` is the closure's
-/// return type. Note what is *absent* from this signature: `Value`. The type
-/// is therefore nameable — and [`Sendable::new`] callable — from
-/// macro-generated code in foreign crates, where `Value` (`pub(crate)`)
-/// cannot be referenced.
-///
-/// Call it directly with [`Sendable::call`] — no process boundary involved —
-/// or [`Sendable::encode`] it to send across the zygote fork.
-pub struct Sendable<State: Serialize + Send, Output: Primitive>
-{
-  /// Offset to the corresponding auto-generated decode function.
-  relativeOffset: usize,
-
-  /// Source code location hash used for target verification.
-  siteTag: u64,
-
-  /// todo desc
-  pub(crate) argTypes: Vec<Type>,
-  /// todo desc
-  pub(crate) returnType: Type,
-
-  /// The captured variables, as a tuple.
-  state: State,
-
-  /// Typed, same-process entry point into the closure body.
-  typedFn: fn(&State, &DynamicList) -> Output
-}
-
-impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
-{
-  #[doc(hidden)]
-  pub fn new(
-    relativeOffset: usize,
-    siteTag: u64,
-    argTypes: Vec<Type>,
-    returnType: Type,
-    state: State,
-    typedFn: fn(&State, &DynamicList) -> Output
-  ) -> Self
-  {
-    Self { relativeOffset, siteTag, argTypes, returnType, state, typedFn }
-  }
-
-  /// Calls the closure directly, in this process. Equivalent to calling the
-  /// original closure — this never touches IPC or pointer resolution.
-  pub fn call(&self, args: &DynamicList) -> Output
-  {
-    (self.typedFn)(&self.state, args)
-  }
-
-  /// Serializes everything needed to reconstruct and call this closure in
-  /// the zygote clone.
-  pub fn encode(&self) -> Result<Vec<u8>, CallError>
-  {
-    let bytes: Vec<u8> = bincode::serde::encode_to_vec(&self.state, bincode::config::standard())
-      .map_err(|e| CallError::Encode(e.to_string()))?;
-    let envelope: Envelope = Envelope {
-      relativeOffset: self.relativeOffset,
-      argsOutputTag: typesTagOf(&self.argTypes, &self.returnType),
-      siteTag: self.siteTag,
-      bytes
-    };
-    bincode::serde::encode_to_vec(&envelope, bincode::config::standard())
-      .map_err(|e| CallError::Encode(e.to_string()))
-  }
-}
-
-// =================================================================================================
-
-/// The type-erased, dynamically callable form of a [`callback!`] closure —
-/// what [`decode`] reconstructs inside the clone.
-///
-/// This is the public boundary of the otherwise `pub(crate)` dynamic world:
-/// its constructor takes only nameable types (a state tuple + a typed fn
-/// pointer), so macro-generated code in foreign crates can build it, while
-/// actually *invoking* it (`ErasedCallable::call`, which does traffic in
-/// `Value`) stays crate-internal. This is what allows `Value` to remain
-/// `pub(crate)`.
-pub struct ErasedCallable
-{
-  inner: Box<dyn Callable<DynamicList, Value>>
-}
-
-impl ErasedCallable
-{
-  /// Wraps a decoded capture-state tuple plus the macro-generated typed
-  /// entry point into the erased, dispatcher-facing callable.
-  #[doc(hidden)]
-  pub fn fromStateAndFn<State: Send + 'static, Output: Primitive + 'static>(
-    state: State,
-    typedFn: fn(&State, &DynamicList) -> Output
-  ) -> Self
-  {
-    Self { inner: Box::new(StateFnAdapter { state, typedFn }) }
-  }
-
-  /// Invokes the erased closure with dynamic arguments and returns the
-  /// dynamic result. `pub(crate)`: only this crate's dispatcher (running
-  /// inside the clone) ever needs it — `Value` is `pub(crate)`.
-  pub(crate) fn call(&self, args: DynamicList) -> Value
-  {
-    self.inner.call(args)
-  }
-}
-
-/// In-crate bridge from a macro-generated typed entry point to the dynamic
-/// `Callable<CallbackArgs, Value>` object held by the dispatcher. The only
-/// place where the two worlds meet.
-struct StateFnAdapter<State: Send + 'static, Output: Primitive + 'static>
-{
-  state: State,
-  typedFn: fn(&State, &DynamicList) -> Output
-}
-
-impl<State: Send + 'static, Output: Primitive + 'static> Callable<DynamicList, Value> for StateFnAdapter<State, Output>
-{
-  fn call(&self, args: DynamicList) -> Value
-  {
-    // The typed entry point returns the closure's concrete return type;
-    // convert it to the dynamic form the C-side marshalling understands.
-    <Output as Primitive>::toValue((self.typedFn)(&self.state, &args))
-  }
 }
 
 // =================================================================================================
@@ -345,26 +143,26 @@ macro_rules! callback
         argsOutputTag: u64,
         bytes: &[u8]
       ) -> ::std::result::Result<
-        $crate::ffi::callback::ErasedCallable,
-        $crate::ffi::callback::CallError
+        $crate::ffi::callback::erased::ErasedCallable,
+        $crate::ffi::callback::error::CallError
       >
       {
-        let expectedSiteTag: u64 = $crate::ffi::callback::tagOf(
+        let expectedSiteTag: u64 = $crate::ffi::callback::addressing::tagOf(
           concat!(file!(), ":", line!(), ":", column!())
         );
         if siteTag != expectedSiteTag {
           return ::std::result::Result::Err(
-            $crate::ffi::callback::CallError::TypeMismatch { tag: siteTag }
+            $crate::ffi::callback::error::CallError::TypeMismatch { tag: siteTag }
           );
         }
 
-        let expectedTypesTag: u64 = $crate::ffi::callback::typesTagOf(
+        let expectedTypesTag: u64 = $crate::ffi::callback::addressing::typesTagOf(
           &[ $( <$argTy as $crate::ffi::types::primitive::Primitive>::TypeTag ),* ],
           &<$retTy as $crate::ffi::types::primitive::Primitive>::TypeTag
         );
         if argsOutputTag != expectedTypesTag {
           return ::std::result::Result::Err(
-            $crate::ffi::callback::CallError::ArgsOutputMismatch
+            $crate::ffi::callback::error::CallError::ArgsOutputMismatch
           );
         }
 
@@ -372,19 +170,19 @@ macro_rules! callback
           $crate::ffi::callback::__reexport::bincode::serde::decode_from_slice(
             bytes,
             $crate::ffi::callback::__reexport::bincode::config::standard()
-          ).map_err(|e| $crate::ffi::callback::CallError::Decode(
+          ).map_err(|e| $crate::ffi::callback::error::CallError::Decode(
             ::std::string::ToString::to_string(&e)
           ))?;
 
         ::std::result::Result::Ok(
-          $crate::ffi::callback::ErasedCallable::fromStateAndFn(state, __callTyped)
+          $crate::ffi::callback::erased::ErasedCallable::fromStateAndFn(state, __callTyped)
         )
       }
 
-      let siteTag: u64 = $crate::ffi::callback::tagOf(
+      let siteTag: u64 = $crate::ffi::callback::addressing::tagOf(
         concat!(file!(), ":", line!(), ":", column!())
       );
-      let relativeOffset: usize = $crate::ffi::callback::relativeOffsetOf(
+      let relativeOffset: usize = $crate::ffi::callback::addressing::relativeOffsetOf(
         __callDecode as *const () as usize
       );
       let argTypes: ::std::vec::Vec<$crate::ffi::types::Type> =
@@ -393,7 +191,7 @@ macro_rules! callback
         <$retTy as $crate::ffi::types::primitive::Primitive>::TypeTag;
 
       $scope.callback(
-        $crate::ffi::callback::Sendable::new(
+        $crate::ffi::callback::sendable::Sendable::new(
           relativeOffset,
           siteTag,
           argTypes,
@@ -402,8 +200,10 @@ macro_rules! callback
           __callTyped
         )
       )
+      //
     }
   };
+  //
 }
 
 // =================================================================================================

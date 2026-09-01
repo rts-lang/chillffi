@@ -3,7 +3,7 @@ use crate::ffi::types::primitive::Callback;
 use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::{Type, Value};
-use crate::ffi::callback::{Sendable};
+use crate::ffi::callback::sendable::Sendable;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicU64;

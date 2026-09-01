@@ -9,8 +9,9 @@ mod private
 {
   use crate::ffi::types::Value;
 
-pub trait Sealed
+  pub trait Sealed
   {
+    // todo desc
     fn intoFfiValue(self) -> Value;
   }
 }
@@ -27,13 +28,15 @@ macro_rules! implSealedArg
   {
     impl private::Sealed for $type
     {
+      // todo desc
       fn intoFfiValue(self) -> Value { Value::from(self) }
     }
-
-    /// Public handle so macro-generated code in foreign crates can build
-    /// argument lists without naming `Value`.
+    
     impl From<$type> for Arg
     {
+      /// todo desc (переписать легче)
+      /// Public handle so macro-generated code in foreign crates can build
+      /// argument lists without naming `Value`.
       fn from(v: $type) -> Self { Self(Value::from(v)) }
     }
   };
@@ -52,6 +55,7 @@ impl From<Callback> for Arg
 
 impl private::Sealed for Callback
 {
+  /// todo desc
   fn intoFfiValue(self) -> Value { Value::Function(self.0) }
 }
 

@@ -1,3 +1,5 @@
+use crate::ffi::callback::decode;
+use crate::ffi::callback::erased::ErasedCallable;
 use crate::ffi::types::{Type, Value};
 use crate::ffi::callback;
 use parking_lot::{Mutex, RawMutex};
@@ -11,7 +13,7 @@ use std::ffi::c_void;
 use fxhash::FxHashMap;
 use parking_lot::lock_api::MutexGuard;
 use crate::zygote::{FFIRequest};
-use crate::ffi::callback::{ErasedCallable};
+
 // =================================================================================================
 
 /// Callback registry inside the clone (not parent).
@@ -630,7 +632,7 @@ pub(super) fn executeFFI(
     }
 
     FFIRequest::RegisterCallback { id, bytes, argTypes, returnType } => {
-      let wrapper: callback::ErasedCallable = callback::decode(&bytes)
+      let wrapper: ErasedCallable = decode(&bytes)
         .map_err(|e| FFIError::Other(format!("call decode failed: {e}")))?;
       let cif: Cif = buildCif(&argTypes, &returnType)?;
       let leaked: &mut CallbackWrapper = Box::leak(Box::new(CallbackWrapper {
