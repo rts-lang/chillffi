@@ -1,9 +1,11 @@
+use std::ffi::CStr;
+use std::ffi::CString;
 use crate::ffi::errors::FFIError;
 use serde::{Deserialize, Serialize};
 // =================================================================================================
 
 /// A value that can be passed between processes and used when calling FFI.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Value
 {
   /// Just an empty value.
@@ -159,6 +161,8 @@ macro_rules! implFFIPrimitive
   };
 }
 
+// =================================================================================================
+
 // Declaration of all primitive types
 implFFIPrimitive!(u8, U8);
 implFFIPrimitive!(u16, U16);
@@ -173,6 +177,8 @@ implFFIPrimitive!(isize, Isize);
 implFFIPrimitive!(f32, F32);
 implFFIPrimitive!(f64, F64);
 implFFIPrimitive!(bool, Bool);
+
+// =================================================================================================
 
 impl Primitive for Pointer
 {
@@ -223,10 +229,96 @@ impl From<Pointer> for Value
 
 // =================================================================================================
 
+impl From<String> for Value
+{
+  /// Converts a Rust [`String`] into [`Value::String`] (ptr + len).
+  fn from(s: String) -> Self { Value::String(s.into_bytes()) }
+}
+
+impl From<&str> for Value
+{
+  /// Converts a string slice `&str` into [`Value::String`] (ptr + len).
+  fn from(s: &str) -> Self { Value::String(s.as_bytes().to_vec()) }
+}
+
+impl From<CString> for Value
+{
+  /// Converts a [`CString`] into [`Value::CString`].
+  fn from(c: CString) -> Self { Value::CString(c.into_bytes()) }
+}
+
+impl From<&CStr> for Value
+{
+  /// Converts a C-string literal (`c"hello"`) into [`Value::CString`].
+  fn from(c: &CStr) -> Self { Value::CString(c.to_bytes().to_vec()) }
+}
+
+impl From<Vec<u8>> for Value
+{
+  /// Converts raw bytes `Vec<u8>` into [`Value::RawString`].
+  fn from(v: Vec<u8>) -> Self { Value::RawString(v) }
+}
+
+impl From<&[u8]> for Value
+{
+  /// Converts a byte slice `&[u8]` into [`Value::RawString`].
+  fn from(v: &[u8]) -> Self { Value::RawString(v.to_vec()) }
+}
+
+impl TryFrom<Value> for String
+{
+  type Error = FFIError;
+
+  /// Attempts to convert a string [`Value`] into a Rust [`String`].
+  fn try_from(value: Value) -> Result<Self, Self::Error>
+  {
+    let bytes: Vec<u8> = extractStringBytes(value)?;
+    String::from_utf8(bytes)
+      .map_err(|e| FFIError::Other(format!("not valid UTF-8: {e}")))
+  }
+}
+
+impl TryFrom<Value> for CString
+{
+  type Error = FFIError;
+
+  /// Attempts to convert a string [`Value`] into a [`CString`].
+  fn try_from(value: Value) -> Result<Self, Self::Error>
+  {
+    let bytes: Vec<u8> = extractStringBytes(value)?;
+    CString::new(bytes)
+      .map_err(|e| FFIError::Other(format!("interior NUL byte: {e}")))
+  }
+}
+
+impl TryFrom<Value> for Vec<u8>
+{
+  type Error = FFIError;
+
+  /// Extracts raw bytes from a string [`Value`].
+  fn try_from(value: Value) -> Result<Self, Self::Error>
+  {
+    extractStringBytes(value)
+  }
+}
+
+/// Helper function to extract raw byte vector from any string [`Value`] variant.
+fn extractStringBytes(value: Value) -> Result<Vec<u8>, FFIError>
+{
+  match value
+  {
+    Value::String(b) | Value::CString(b) | Value::RawString(b) => Ok(b),
+    _ => Err(FFIError::Other(format!("expected a string Value, got {:?}", value))),
+  }
+}
+
+// =================================================================================================
+
 #[cfg(test)]
 mod tests
 {
   use crate::ffi;
+  use std::ffi::CString;
   use crate::ffi::value::{Pointer, Value};
   // ===============================================================================================
 
@@ -392,6 +484,29 @@ mod tests
 
   // ===============================================================================================
 
+  /// Checks string conversion bridges and `TryFrom` validation.
+  #[test]
+  fn stringBridges() -> ()
+  {
+    let valString: Value = String::from("hello").into();
+    assert!(matches!(valString, Value::String(_)));
+
+    let valStr: Value = "hello".into();
+    assert_eq!(valStr, Value::String(b"hello".to_vec()));
+
+    let valCString: Value = CString::new("hello").unwrap().into();
+    assert_eq!(valCString, Value::CString(b"hello".to_vec()));
+
+    let valRawBytes: Value = vec![0u8, 1, 2].into();
+    assert_eq!(valRawBytes, Value::RawString(vec![0, 1, 2]));
+
+    // Reverse conversions
+    let resString: String = Value::RawString(b"hello".to_vec()).try_into().unwrap();
+    assert_eq!(resString, "hello");
+
+    assert!(CString::try_from(Value::RawString(b"with\0nul".to_vec())).is_err());
+  }
+
   /// Checks passing CString to a C function expecting a \0-terminated string (strlen).
   #[test]
   fn cString() -> ()
@@ -400,7 +515,7 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       Ok(
         libc.call("strlen")
-          .arg(Value::CString(b"hello".to_vec()))
+          .arg(c"hello")
           .result()?
       )
     }).expect("FFI CString call failed");
@@ -417,8 +532,8 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       Ok(
         libc.call("strnlen")
-        .arg(Value::String(b"hello world".to_vec()))
-        .result()?
+          .arg("hello world")
+          .result()?
       )
     }).expect("FFI String call failed");
 
@@ -433,7 +548,7 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       Ok(
         libc.call("atoi")
-          .arg(Value::RawString(b"12345\0".to_vec()))
+          .arg(b"12345\0".to_vec())
           .result()?
       )
     }).expect("FFI RawString call failed");
