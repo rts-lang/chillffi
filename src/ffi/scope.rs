@@ -1,3 +1,4 @@
+use crate::ffi::types::primitive::DynamicStruct;
 use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::types::Type;
 use crate::ffi::callback::{Callable, Sendable};
@@ -164,15 +165,22 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
-  /// Reads a dynamically-typed C struct at `pointer`, shaped by `fields`.
-  pub fn readDynamicStruct(pointer: impl Into<usize>, fields: &[Type]) -> Result<Vec<Value>, FFIError>
+  /// Читает динамически типизированную C-структуру по указателю и 
+  /// возвращает её как `DynamicStruct`.
+  pub fn readDynamicStruct(
+    pointer: impl Into<usize>,
+    fields: &[Type],
+  ) -> Result<DynamicStruct, FFIError> 
   {
-    match sendRawRequest(FFIRequest::ReadDynamicStruct { 
-      pointer: pointer.into(), 
-      fields: fields.to_vec() 
+    match sendRawRequest(FFIRequest::ReadDynamicStruct {
+      pointer: pointer.into(),
+      fields: fields.to_vec(),
     })? {
-      Value::Struct(values) => Ok(values),
-      other => Err(FFIError::Other(format!("ReadDynamicStruct: expected Value::Struct, got {:?}", other))),
+      Value::Struct(values) => Ok(DynamicStruct::fromValues(values)),
+      other => Err(FFIError::Other(format!(
+        "ReadDynamicStruct: expected Value::Struct, got {:?}",
+        other
+      ))),
     }
   }
 

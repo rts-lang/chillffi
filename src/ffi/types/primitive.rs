@@ -67,6 +67,8 @@ implFFIPrimitive!(bool, Bool);
 
 // =================================================================================================
 
+// Pointer
+
 impl Primitive for Pointer
 {
   const TypeTag: Type = Type::Pointer;
@@ -100,6 +102,49 @@ impl Primitive for ()
 
   /// Converts a unit type `()` into a [`Value::None`].
   fn toValue(self) -> Value { Value::None }
+}
+
+// =================================================================================================
+
+// DynamicStruct
+
+
+/// Динамическая структура, прочитанная из памяти.
+/// Поля доступны по индексу с автоматическим приведением к нужному Rust-типу.
+pub struct DynamicStruct 
+{
+  /// todo desc
+  values: Vec<Value>
+}
+
+impl DynamicStruct 
+{
+  /// Создаёт обёртку из вектора значений (используется внутри крейта).
+  pub(crate) fn fromValues(values: Vec<Value>) -> Self 
+  {
+    Self { values }
+  }
+
+  /// Возвращает количество полей в структуре.
+  pub fn len(&self) -> usize 
+  {
+    self.values.len()
+  }
+
+  /// Проверяет, пуста ли структура.
+  pub fn is_empty(&self) -> bool 
+  {
+    self.values.is_empty()
+  }
+
+  /// Извлекает поле по индексу и преобразует его в требуемый тип `T`.
+  pub fn get<T: Primitive>(&self, index: usize) -> Result<T, FFIError> 
+  {
+    self.values
+      .get(index)
+      .ok_or_else(|| FFIError::Other(format!("field index {} out of bounds", index)))
+      .and_then(|v| T::fromValue(v.clone()))
+  }
 }
 
 // =================================================================================================
