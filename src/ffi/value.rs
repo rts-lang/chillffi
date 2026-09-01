@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A value that can be passed between processes and used when calling FFI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Value
+pub(crate) enum Value
 {
   /// Just an empty value.
   None,
@@ -177,6 +177,55 @@ implFFIPrimitive!(isize, Isize);
 implFFIPrimitive!(f32, F32);
 implFFIPrimitive!(f64, F64);
 implFFIPrimitive!(bool, Bool);
+
+// =================================================================================================
+
+mod private
+{
+  pub trait Sealed
+  {
+    fn intoFfiValue(self) -> crate::ffi::value::Value;
+  }
+}
+
+/// Sealed marker trait for types that can be passed into FFI calls.
+/// Prevents external users from constructing or using `Value` directly.
+pub trait FfiArg: private::Sealed {}
+
+impl<T: private::Sealed> FfiArg for T {}
+
+macro_rules! implSealedArg
+{
+  ($type:ty) =>
+  {
+    impl private::Sealed for $type
+    {
+      fn intoFfiValue(self) -> Value { Value::from(self) }
+    }
+  };
+}
+
+// Implementing conversions for all supported FFI argument types
+implSealedArg!(u8);
+implSealedArg!(u16);
+implSealedArg!(u32);
+implSealedArg!(u64);
+implSealedArg!(usize);
+implSealedArg!(i8);
+implSealedArg!(i16);
+implSealedArg!(i32);
+implSealedArg!(i64);
+implSealedArg!(isize);
+implSealedArg!(f32);
+implSealedArg!(f64);
+implSealedArg!(bool);
+implSealedArg!(Pointer);
+implSealedArg!(String);
+implSealedArg!(&str);
+implSealedArg!(CString);
+implSealedArg!(&CStr);
+implSealedArg!(Vec<u8>);
+implSealedArg!(&[u8]);
 
 // =================================================================================================
 
@@ -361,35 +410,35 @@ mod tests
       
       let resU8: u8 = 
         libc.call("strnlen")
-          .arg(Value::CString(b"a".to_vec()))
+          .arg(c"a")
           .arg::<u8>(10)
           .result()?;
       assert!(matches!(resU8, 1));
       
       let resU16: u16 = 
         libc.call("strnlen")
-        .arg(Value::CString(b"ab".to_vec()))
+        .arg(c"ab")
         .arg::<u16>(10)
         .result()?;
       assert!(matches!(resU16, 2));
       
       let resU32: u32 = 
         libc.call("strnlen")
-        .arg(Value::CString(b"abc".to_vec()))
+        .arg(c"abc")
         .arg::<u32>(10)
         .result()?;
       assert!(matches!(resU32, 3));
       
       let resU64: u64 = 
         libc.call("strnlen")
-        .arg(Value::CString(b"abcd".to_vec()))
+        .arg(c"abcd")
         .arg::<u64>(10)
         .result()?;
       assert!(matches!(resU64, 4));
       
       let resUsize: usize = 
         libc.call("strnlen")
-        .arg(Value::CString(b"abcde".to_vec()))
+        .arg(c"abcde")
         .arg::<usize>(10)
         .result()?;
       assert!(matches!(resUsize, 5));
@@ -449,7 +498,7 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       Ok(
         libc.call("getenv")
-          .arg(Value::CString(b"noSuchVar".to_vec()))
+          .arg(c"noSuchVar")
           .result()?
       )
     }).expect("FFI pointer call failed");
@@ -470,7 +519,7 @@ mod tests
       let libc: Library = scope.load("libc.so.6")?;
       let ptr: Pointer = 
         libc.call("strdup")
-          .arg(Value::CString(b"hello".to_vec()))
+          .arg(c"hello")
           .result()?;
       assert_ne!(ptr, Pointer(0));
   

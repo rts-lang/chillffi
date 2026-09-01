@@ -1,3 +1,4 @@
+use crate::ffi::value::FfiArg;
 use std::cell::RefMut;
 use std::marker::PhantomData;
 use crate::ffi::value::Primitive;
@@ -176,11 +177,9 @@ impl<'a, 'g> CallBuilder<'a, 'g>
 
   /// Append one argument. Chainable.
   #[inline]
-  pub fn arg<T>(mut self, value: T) -> Self
-  where
-    T: Into<Value>,
+  pub fn arg<T: FfiArg>(mut self, arg: T) -> Self
   {
-    self.args.push(value.into());
+    self.args.push(arg.intoFfiValue());
     self
   }
 
@@ -354,21 +353,6 @@ mod tests
       let expected: f64 = (i + 1) as f64;
       assert!((val - expected).abs() < f64::EPSILON, "Expected {}, got {}", expected, val);
     }
-  }
-
-  // ===============================================================================================
-
-  /// Checks passing [`Value::None`] as an argument - should return an error.
-  #[test]
-  fn noneArgumentFails() -> ()
-  {
-    let result: Result<f64, _> = ffi!(|scope| {
-      let libm: Library = scope.load("libm.so.6")?;
-      let res: f64 = libm.call("sqrt").arg(Value::None).result()?;
-      Ok(res)
-    });
-
-    assert!(result.is_err(), "FFI call with Value::None should fail");
   }
 
   // ===============================================================================================

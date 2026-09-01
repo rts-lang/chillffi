@@ -132,7 +132,9 @@ impl<'g> Scope<'g>
   #[inline]
   pub fn free(pointer: impl Into<usize>) -> Result<(), FFIError>
   {
-    sendRawRequest(FFIRequest::Free { pointer: pointer.into() })?;
+    sendRawRequest(FFIRequest::Free { 
+      pointer: pointer.into() 
+    })?;
     Ok(())
   }
 
@@ -140,14 +142,20 @@ impl<'g> Scope<'g>
   #[inline]
   pub fn readMemory(pointer: impl Into<usize>, length: usize) -> Result<Value, FFIError>
   {
-    sendRawRequest(FFIRequest::ReadMemory { pointer: pointer.into(), length })
+    sendRawRequest(FFIRequest::ReadMemory { 
+      pointer: pointer.into(), 
+      length 
+    })
   }
 
   /// Writes data from [`Value`] into the clone's memory at `pointer`.
   #[inline]
   pub fn writeMemory(pointer: impl Into<usize>, value: Value) -> Result<(), FFIError>
   {
-    sendRawRequest(FFIRequest::WriteMemory { pointer: pointer.into(), value })?;
+    sendRawRequest(FFIRequest::WriteMemory { 
+      pointer: pointer.into(), 
+      value 
+    })?;
     Ok(())
   }
 
@@ -156,7 +164,10 @@ impl<'g> Scope<'g>
   /// Reads a dynamically-typed C struct at `pointer`, shaped by `fields`.
   pub fn readDynamicStruct(pointer: impl Into<usize>, fields: &[Type]) -> Result<Vec<Value>, FFIError>
   {
-    match sendRawRequest(FFIRequest::ReadDynamicStruct { pointer: pointer.into(), fields: fields.to_vec() })? {
+    match sendRawRequest(FFIRequest::ReadDynamicStruct { 
+      pointer: pointer.into(), 
+      fields: fields.to_vec() 
+    })? {
       Value::Struct(values) => Ok(values),
       other => Err(FFIError::Other(format!("ReadDynamicStruct: expected Value::Struct, got {:?}", other))),
     }
