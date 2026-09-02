@@ -3,34 +3,36 @@ use crate::ffi::types::primitive::Primitive;
 use crate::ffi::types::Value;
 // =================================================================================================
 
-/// Динамический список FFI значений.
+/// Dynamic list of FFI values.
 pub struct DynamicList
 {
-  /// todo desc
+  /// FFI Values.
   values: Vec<Value>
 }
 
 impl DynamicList 
 {
-  /// Создаёт обёртку из вектора значений (используется внутри крейта).
+  /// Creates a wrapper from a vector of values.
+  /// 
+  /// (due to [`Value`] being used only within the crate)
   pub(crate) fn fromValues(values: Vec<Value>) -> Self 
   {
     Self { values }
   }
 
-  /// Возвращает количество полей в структуре.
+  /// Returns the number of fields in the structure.
   pub fn len(&self) -> usize 
   {
     self.values.len()
   }
 
-  /// Проверяет, пуста ли структура.
-  pub fn is_empty(&self) -> bool 
+  /// Checks whether the structure is empty.
+  pub fn isEmpty(&self) -> bool 
   {
     self.values.is_empty()
   }
 
-  /// Извлекает поле по индексу и преобразует его в требуемый тип `T`.
+  /// Extracts a field by index and converts it into the required type `T`.
   pub fn get<T: Primitive>(&self, index: usize) -> Result<T, FFIError> 
   {
     self.values
@@ -44,34 +46,10 @@ impl DynamicList
 
 impl From<Vec<Value>> for DynamicList
 {
-  /// todo desc
+  /// Converts a vector of [`Value`]s into a [`DynamicList`].
   fn from(values: Vec<Value>) -> Self
   {
     Self { values }
-  }
-}
-
-pub trait IntoValue
-{
-  /// todo desd
-  fn intoValue(self) -> Value;
-}
-
-impl<T: Primitive> IntoValue for T
-{
-  /// todo desc
-  fn intoValue(self) -> Value
-  {
-    T::toValue(self)
-  }
-}
-
-impl IntoValue for Value
-{
-  /// Позволяет возвращать Value напрямую, если требуется полная динамика.
-  fn intoValue(self) -> Value
-  {
-    self
   }
 }
 

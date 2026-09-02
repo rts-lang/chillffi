@@ -25,6 +25,7 @@ pub trait Primitive: Sized
 
   /// Converts a dynamic [`Value`] into a concrete primitive type.
   fn fromValue(value: Value) -> Result<Self, FFIError>;
+  
   /// Converts this primitive into a dynamic [`Value`].
   fn toValue(self) -> Value;
 }

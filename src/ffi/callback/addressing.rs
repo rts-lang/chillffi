@@ -20,10 +20,8 @@ pub fn relativeOffsetOf(absoluteAddr: usize) -> usize
   absoluteAddr.wrapping_sub(moduleBase())
 }
 
-/// todo desc
-/// 
-/// todo тут надо #[doc(hidden)] ?
-pub fn resolveRelative(offset: usize) -> usize
+/// Inverse of [`relativeOffsetOf`]: base + offset = absolute address.
+pub(crate) fn resolveRelative(offset: usize) -> usize
 {
   moduleBase().wrapping_add(offset)
 }

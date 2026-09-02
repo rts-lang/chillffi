@@ -4,14 +4,7 @@ use crate::ffi::types::Value;
 use crate::ffi::types::primitive::{Callback, Pointer};
 // =================================================================================================
 
-/// todo desc (переписать)
-/// Публичный заменитель [`Value`] для сигнатур публичных методов.
-///
-/// `Value` — `pub(crate)`, поэтому не может появляться в публичном API
-/// (`Scope::callPointer` и т.п.): вызов из внешнего крейта падает с
-/// E0603 «type is private». `Arg` оборачивает `Value`, строится из любого
-/// `FfiArg`-типа через `From` (включая `Callback`), разворачивается только
-/// внутри крейта.
+/// Public wrapper over [`Value`] for signatures of public methods.
 #[derive(Debug, Clone)]
 pub struct Arg(pub(crate) Value);
 
@@ -23,32 +16,32 @@ mod private
 
   pub trait Sealed
   {
-    // todo desc
+    /// Converts the type into its internal `Value` representation.
     fn intoFfiValue(self) -> Value;
   }
 }
 
 /// Sealed marker trait for types that can be passed into FFI calls.
+/// 
 /// Prevents external users from constructing or using `Value` directly.
 pub trait FfiArg: private::Sealed {}
 
 impl<T: private::Sealed> FfiArg for T {}
 
+/// Implements `Sealed` (-> `FfiArg`) and `From<$type> for Arg` in one shot.
 macro_rules! implSealedArg
 {
   ($type:ty) =>
   {
     impl private::Sealed for $type
     {
-      // todo desc
+      /// Converts the value through `Value::from`.
       fn intoFfiValue(self) -> Value { Value::from(self) }
     }
     
     impl From<$type> for Arg
     {
-      /// todo desc (переписать легче)
-      /// Public handle so macro-generated code in foreign crates can build
-      /// argument lists without naming `Value`.
+      /// Wraps the value into an `Arg`.
       fn from(v: $type) -> Self { Self(Value::from(v)) }
     }
   };
@@ -56,9 +49,8 @@ macro_rules! implSealedArg
 
 impl From<Callback> for Arg
 {
-  /// todo desc
-  /// Callback — ручной Sealed, поэтому и From вручную
-  fn from(c: Callback) -> Self { Self(Value::Function(c.0)) }
+  /// Wraps the callback ID into [`Value::Function`].
+  fn from(callback: Callback) -> Self { Self(Value::Function(callback.0)) }
 }
 
 // =================================================================================================
@@ -67,7 +59,7 @@ impl From<Callback> for Arg
 
 impl private::Sealed for Callback
 {
-  /// todo desc
+  /// Converts the handle into [`Value::Function`].
   fn intoFfiValue(self) -> Value { Value::Function(self.0) }
 }
 

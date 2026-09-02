@@ -24,6 +24,7 @@ pub enum CallError
 
 impl std::fmt::Display for CallError
 {
+  /// Formats the error using its debug representation.
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{:?}", self) }
 }
 impl std::error::Error for CallError {}

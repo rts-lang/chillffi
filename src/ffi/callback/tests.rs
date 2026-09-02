@@ -15,7 +15,7 @@ mod tests
   fn roundtrip() -> ()
   {
     let threshold: i32 = 5;
-    let compar = callback!([threshold: i32] |args: Vec<i32>| -> i32 {
+    let compar: Callback = callback!([threshold: i32] |args: Vec<i32>| -> i32 {
       args.iter().filter(|&&x| x > threshold).count() as i32
     });
 
@@ -32,11 +32,11 @@ mod tests
   fn argsOutputMismatchIsCaught() -> ()
   {
     let x: i32 = 1;
-    let c = callback!([x: i32] |args: Vec<i32>| -> i32 { args.len() as i32 + x });
+    let c: Callback = callback!([x: i32] |args: Vec<i32>| -> i32 { args.len() as i32 + x });
     let bytes: Vec<u8> = c.encode().expect("encode");
 
     let wrong: Result<Box<dyn Callable<String, bool>>, CallError> = decode(&bytes);
-    assert!(matches!(wrong, Err(CallError::ArgsOutputMismatch)));
+    assert!( matches!(wrong, Err(CallError::ArgsOutputMismatch)) );
   }
 
   /// A resolved-but-wrong site (simulated by hand-corrupting the tag) must
@@ -45,15 +45,16 @@ mod tests
   fn siteTagMismatchIsCaught() -> ()
   {
     let x: i32 = 1;
-    let c = callback!([x: i32] |args: Vec<i32>| -> i32 { args.len() as i32 + x });
+    let c: Callback = callback!([x: i32] |args: Vec<i32>| -> i32 { args.len() as i32 + x });
     let mut bytes: Vec<u8> = c.encode().expect("encode");
 
-    let (mut envelope, _): (Envelope, usize) = bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).unwrap();
+    let (mut envelope, _): (Envelope, usize) = 
+      bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).unwrap();
     envelope.siteTag = envelope.siteTag.wrapping_add(1);
     bytes = bincode::serde::encode_to_vec(&envelope, bincode::config::standard()).unwrap();
 
     let result: Result<Box<dyn Callable<Vec<i32>, i32>>, CallError> = decode(&bytes);
-    assert!(matches!(result, Err(CallError::TypeMismatch { .. })));
+    assert!( matches!(result, Err(CallError::TypeMismatch { .. })) );
   }
 
   // ===============================================================================================

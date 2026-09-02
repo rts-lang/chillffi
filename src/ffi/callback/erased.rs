@@ -15,6 +15,7 @@ use crate::ffi::callback::DynamicList;
 /// `pub(crate)`.
 pub struct ErasedCallable
 {
+  /// Type-erased callable implementation.
   inner: Box<dyn Callable<DynamicList, Value>>
 }
 
@@ -32,8 +33,9 @@ impl ErasedCallable
   }
 
   /// Invokes the erased closure with dynamic arguments and returns the
-  /// dynamic result. `pub(crate)`: only this crate's dispatcher (running
-  /// inside the clone) ever needs it — `Value` is `pub(crate)`.
+  /// dynamic result.
+  /// 
+  /// `pub(crate)`: only this crate's dispatcher (running inside the clone).
   pub(crate) fn call(&self, args: DynamicList) -> Value
   {
     self.inner.call(args)
@@ -41,15 +43,20 @@ impl ErasedCallable
 }
 
 /// In-crate bridge from a macro-generated typed entry point to the dynamic
-/// `Callable<CallbackArgs, Value>` object held by the dispatcher. The only
-/// place where the two worlds meet.
+/// `Callable<CallbackArgs, Value>` object held by the dispatcher. 
+/// 
+/// The only place where the two worlds meet.
 struct StateFnAdapter<State: Send + 'static, Output: Primitive + 'static>
 {
+  /// Captured closure state.
   state: State,
+
+  /// Typed function entry point.
   typedFn: fn(&State, &DynamicList) -> Output
 }
 
-impl<State: Send + 'static, Output: Primitive + 'static> Callable<DynamicList, Value> for StateFnAdapter<State, Output>
+impl<State: Send + 'static, Output: Primitive + 'static> 
+  Callable<DynamicList, Value> for StateFnAdapter<State, Output>
 {
   fn call(&self, args: DynamicList) -> Value
   {

@@ -79,9 +79,9 @@ pub(crate) enum Value
 /// Description of the value type 
 /// for defining FFI arguments and result.
 ///
-/// todo: add unit tests for Type variants verification
-/// 
-/// todo: В целом его должно быть полностью не видно и нельзя использовать отдельно.
+/// todo: Add unit tests for Type variants verification.
+///
+/// todo: In general, it should be completely hidden and unavailable for separate use.
 #[derive(Debug, Clone, Serialize, Deserialize, Hash)]
 #[doc(hidden)]
 pub enum Type

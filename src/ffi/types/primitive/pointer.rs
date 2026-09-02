@@ -24,12 +24,15 @@ impl Primitive for Pointer
   }
 
   /// Converts this [`Pointer`] wrapper into a [`Value::Pointer`].
-  fn toValue(self) -> Value { Value::Pointer(self.0) }
+  fn toValue(self) -> Value 
+  {
+    Value::Pointer(self.0)
+  }
 }
 
 impl std::fmt::UpperHex for Pointer
 {
-  /// todo desc
+  /// Formats the pointer address using uppercase hexadecimal notation.
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
   {
     std::fmt::UpperHex::fmt(&self.0, f)

@@ -140,8 +140,7 @@ impl<'g> Scope<'g>
     })?;
     Ok(())
   }
-
-  /// todo desc (изменилось функционал)
+  
   /// Reads `length` bytes at `pointer` from the clone's memory.
   #[inline]
   pub fn readMemory(pointer: impl Into<usize>, length: usize) -> Result<Vec<u8>, FFIError> 
@@ -152,8 +151,7 @@ impl<'g> Scope<'g>
     })?;
     value.try_into()
   }
-
-  /// todo desc (изменилось функционал)
+  
   /// Writes data from [`Value`] into the clone's memory at `pointer`.
   pub fn writeMemory(pointer: impl Into<usize>, value: impl Into<Value>) -> Result<(), FFIError>
   {
@@ -166,8 +164,8 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
-  /// Читает динамически типизированную C-структуру по указателю и 
-  /// возвращает её как `DynamicStruct`.
+  /// Reads a dynamically typed C structure from the pointer 
+  /// and returns it as a `DynamicStruct`.
   pub fn readDynamicStruct(
     pointer: impl Into<usize>,
     fields: &[Type],
@@ -264,8 +262,8 @@ impl<'g> Drop for Scope<'g>
 /// [`AllocatedMemory<'g>`] / [`Library<'g>`] still alive is *not* freed
 /// automatically (their own `Drop` runs only while `'g` is still valid — by
 /// construction it has been, because we are now at the end of the borrow).
-/// 
-/// todo Требует рассмотрения, такого по идее не должно быть возможно делать:
+///
+/// todo Requires consideration; this should theoretically not be possible:
 ///  If you need to keep an allocation past the scope, extract its raw address
 ///  via [`AllocatedMemory::address`] before the scope ends.
 ///

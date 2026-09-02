@@ -69,7 +69,7 @@ pub fn decode(bytes: &[u8]) -> Result<ErasedCallable, CallError>
   // As a second line of defense, the target function re-checks both the
   // call-site tag and the argument/return type tag before it deserializes
   // anything.
-  let decodeFn: DecodeFn = unsafe { std::mem::transmute(absoluteAddr) };
+  let decodeFn: DecodeFn = unsafe{ std::mem::transmute(absoluteAddr) };
   decodeFn(envelope.siteTag, envelope.argsOutputTag, &envelope.bytes)
 }
 
@@ -87,14 +87,16 @@ pub fn decode(bytes: &[u8]) -> Result<ErasedCallable, CallError>
 /// foreign crates) and needs neither `serde` nor `bincode` at the call site:
 /// captures travel as a plain tuple (serde has blanket impls for those), and
 /// bincode is reached through `__reexport`.
-/// 
-/// todo desc - следует описать между строк не много, но что в целом происходит тут.
 #[macro_export]
 macro_rules! callback
 {
   ($scope:expr, [$($name:ident : $ty:ty),* $(,)?] |$($argName:ident : $argTy:ty),* $(,)?| -> $retTy:ty $body:block) =>
   {
     {
+      // The macro generates a typed function that works with the captured
+      // state and dynamically typed arguments.
+      // It also generates the decoder that reconstructs this function later.
+      
       // Typed entry point: extracts the declared arguments from the dynamic
       // `CallbackArgs` by position and runs the original body. Only public
       // API is touched here (`CallbackArgs::get`, `Primitive::TypeTag`).
@@ -107,6 +109,8 @@ macro_rules! callback
         // Clone the captured tuple out — the same closure may run many times.
         let ($($name,)*) = state.clone();
 
+        // Read each argument from the dynamic list and convert it to its
+        // declared Rust type using the `Primitive` implementation.
         let mut __i: usize = 0;
         $(
           let $argName: $argTy = args
@@ -119,6 +123,8 @@ macro_rules! callback
         result
       }
 
+      // This function is stored in the sendable callback and later resolved
+      // in the clone back into the original typed callable.
       // Signature must exactly match `DecodeFn` in `decode`:
       // fn(u64 /*siteTag*/, u64 /*argsOutputTag*/, &[u8]) -> Result<ErasedCallable, CallError>.
       // No `Value` anywhere — that is what makes it compilable in foreign crates.
@@ -131,6 +137,8 @@ macro_rules! callback
         $crate::ffi::callback::CallError
       >
       {
+        // Rebuild the same tags at the destination and verify that the
+        // callback matches the call site and its argument/return types.
         let expectedSiteTag: u64 = $crate::ffi::callback::addressing::tagOf(
           concat!(file!(), ":", line!(), ":", column!())
         );
@@ -150,6 +158,8 @@ macro_rules! callback
           );
         }
 
+        // Deserialize the captured state that was serialized when the
+        // callback was created.
         let (state, _): (($($ty,)*), usize) =
           $crate::ffi::callback::__reexport::bincode::serde::decode_from_slice(
             bytes,
@@ -158,11 +168,15 @@ macro_rules! callback
             ::std::string::ToString::to_string(&e)
           ))?;
 
+        // Combine the restored state with the typed entry point into the
+        // erased callable used by the internal dispatcher.
         ::std::result::Result::Ok(
           $crate::ffi::callback::ErasedCallable::fromStateAndFn(state, __callTyped)
         )
       }
 
+      // Prepare the metadata and function address needed to send the
+      // callback through the zygote boundary.
       let siteTag: u64 = $crate::ffi::callback::addressing::tagOf(
         concat!(file!(), ":", line!(), ":", column!())
       );
@@ -174,6 +188,8 @@ macro_rules! callback
       let returnType: $crate::ffi::types::Type =
         <$retTy as $crate::ffi::types::primitive::Primitive>::TypeTag;
 
+      // Serialize the captured state together with the callback metadata
+      // and hand everything to the scope so the clone can invoke it later.
       $scope.callback(
         $crate::ffi::callback::sendable::Sendable::new(
           relativeOffset,

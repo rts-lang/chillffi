@@ -27,12 +27,7 @@ fn main() -> ()
     let raw: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
     mem.write(raw)?;
     println!("[ffi!] Written raw bytes to clone memory\n");
-
-    // todo desc (переписать - изменилось работа)
-    // Empty capture list — the comparator takes nothing from the outer scope,
-    // only its `args` parameter. If a capture was needed (e.g.,
-    // `threshold`), the list would look like `callback!([threshold: i32] |args| ...)`.
-    //
+    
     // Register the closure in the clone's callback registry.
     let compar: Callback = callback!(scope, [] |a: Pointer, b: Pointer| -> i32 
     {

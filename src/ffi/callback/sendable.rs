@@ -49,7 +49,13 @@ impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
     typedFn: fn(&State, &DynamicList) -> Output
   ) -> Self
   {
-    Self { relativeOffset, siteTag, argTypes, returnType, state, typedFn }
+    Self { 
+      relativeOffset, 
+      siteTag, argTypes, 
+      returnType, 
+      state, 
+      typedFn 
+    }
   }
 
   /// Calls the closure directly, in this process. Equivalent to calling the
@@ -63,14 +69,19 @@ impl<State: Serialize + Send, Output: Primitive> Sendable<State, Output>
   /// the zygote clone.
   pub fn encode(&self) -> Result<Vec<u8>, CallError>
   {
+    // todo desc
     let bytes: Vec<u8> = bincode::serde::encode_to_vec(&self.state, bincode::config::standard())
       .map_err(|e| CallError::Encode(e.to_string()))?;
+    
+    // todo desc
     let envelope: Envelope = Envelope {
       relativeOffset: self.relativeOffset,
       argsOutputTag: typesTagOf(&self.argTypes, &self.returnType),
       siteTag: self.siteTag,
       bytes
     };
+    
+    // todo desc
     bincode::serde::encode_to_vec(&envelope, bincode::config::standard())
       .map_err(|e| CallError::Encode(e.to_string()))
   }
