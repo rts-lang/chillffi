@@ -168,6 +168,34 @@ impl<'g> Scope<'g>
     }
   }
 
+  /// Allocates enough zygote heap memory to hold a dynamically-shaped C
+  /// struct with the given field layout. Unlike [`Scope::alloc`], the byte
+  /// size isn't supplied by the caller — there's no Rust type to run
+  /// `size_of` on for a shape that only exists as C source, so guessing it
+  /// by hand is exactly how `malloc(sizeof(struct ...))` bugs happen on a
+  /// new target. It's resolved on the clone side instead, by the same
+  /// ABI-aware layout math [`Scope::readDynamicStruct`]/
+  /// [`Scope::writeDynamicStruct`] already use.
+  pub fn allocStruct(&self, fields: &[Type]) -> Result<AllocatedMemory<'g>, FFIError>
+  {
+    let stack: &mut Option<HeavyStack> = unsafe{ &mut *self.guard.inner.get() };
+
+    if stack.is_none() {
+      *stack = Some(HeavyStack{
+        pathResolver: None,
+        readErrno: None
+      });
+    }
+
+    match sendRawRequest(FFIRequest::AllocDynamicStruct { fields: fields.to_vec() })? {
+      Value::Struct(parts) if parts.len() == 2 => match (&parts[0], &parts[1]) {
+        (Value::Pointer(address), Value::Usize(size)) => Ok(AllocatedMemory::new(*address, *size)),
+        _ => Err(FFIError::Other("AllocDynamicStruct returned an unexpected shape".to_string())),
+      },
+      _ => Err(FFIError::Other("AllocDynamicStruct did not return a pointer+size pair".to_string())),
+    }
+  }
+
   /// Frees memory previously obtained via `alloc` (or a C-side allocator).
   #[inline]
   pub fn free(pointer: impl Into<usize>) -> Result<(), FFIError>
@@ -222,13 +250,14 @@ impl<'g> Scope<'g>
 
   /// Writes `values` into a dynamically-typed C struct at `pointer`.
   pub fn writeDynamicStruct(
-    pointer: impl Into<usize>, 
-    fields: &[Type], 
-    values: &[Value]
+    pointer: impl Into<usize>,
+    fields: &[Type],
+    values: Vec<Arg>
   ) -> Result<(), FFIError>
   {
+    let values: Vec<Value> = values.into_iter().map(|a: Arg| a.0).collect();
     sendRawRequest(FFIRequest::WriteDynamicStruct {
-      pointer: pointer.into(), fields: fields.to_vec(), values: values.to_vec()
+      pointer: pointer.into(), fields: fields.to_vec(), values
     })?;
     Ok(())
   }
@@ -241,8 +270,8 @@ impl<'g> Scope<'g>
   /// `signal()` both takes and returns one), or read out of a dispatch table
   /// via `readMemory`.
   pub fn callPointer<T: Primitive>(
-    &self, 
-    pointer: impl Into<usize>, 
+    &self,
+    pointer: impl Into<usize>,
     args: Vec<Arg>
   ) -> Result<T, FFIError>
   {
@@ -252,8 +281,8 @@ impl<'g> Scope<'g>
   /// Fire-and-forget variant of `callPointer` — mirrors `Library::callv`.
   #[inline]
   pub fn callvPointer(
-    &self, 
-    pointer: impl Into<usize>, 
+    &self,
+    pointer: impl Into<usize>,
     args: Vec<Arg>
   ) -> Result<(), FFIError>
   {
@@ -265,8 +294,8 @@ impl<'g> Scope<'g>
   /// entirely. Read it back via [`Scope::lastErrno`].
   #[inline]
   pub fn callPointerErrno<T: Primitive>(
-    &self, 
-    pointer: impl Into<usize>, 
+    &self,
+    pointer: impl Into<usize>,
     args: Vec<Arg>
   ) -> Result<T, FFIError>
   {
@@ -277,9 +306,9 @@ impl<'g> Scope<'g>
   /// override, else scope, else global — same order as `CallBuilder::result`)
   /// and sends the request.
   fn callPointerImpl<T: Primitive>(
-    &self, 
-    pointer: impl Into<usize>, 
-    args: Vec<Arg>, 
+    &self,
+    pointer: impl Into<usize>,
+    args: Vec<Arg>,
     readErrno: Option<bool>
   ) -> Result<T, FFIError>
   {
@@ -423,7 +452,8 @@ mod tests
 {
   use crate::ffi;
   use crate::ffi::allocatedMemory::AllocatedMemory;
-  use crate::ffi::types::primitive::Pointer;
+  use crate::ffi::types::Type;
+  use crate::ffi::types::primitive::{Pointer, Arg, DynamicList};
   use crate::ffi::errors::FFIError;
   use crate::ffi::library::Library;
   use crate::ffi::scope::Scope;
@@ -485,6 +515,48 @@ mod tests
     assert!(matches!(len, 5));
   }
 
+  // ===============================================================================================
+  
+  /// Checks that [`Scope::allocStruct`] resolves the correct ABI-aware byte
+  /// size for a shape mixing a 4-byte field with an 8-byte pointer field —
+  /// on x86_64 that's 16 bytes (4 + 4 padding + 8), not the naively summed 12.
+  #[test]
+  fn allocStructResolvesLayoutSize() -> ()
+  {
+    let length: usize = ffi!(|scope| {
+      let mem: AllocatedMemory = scope.allocStruct(&[Type::I32, Type::Pointer])?;
+      Ok(mem.length())
+    }).expect("Scope::allocStruct failed");
+
+    assert_eq!(length, 16);
+  }
+
+  /// Round-trips a struct entirely on the Rust side — [`Scope::allocStruct`]
+  /// sizes it, [`Scope::writeDynamicStruct`] fills it in from plain Rust
+  /// values (via `Arg`, never naming the crate-private `Value`), and
+  /// [`Scope::readDynamicStruct`] reads it back.
+  #[test]
+  fn writeThenReadDynamicStruct() -> ()
+  {
+    let shape: Vec<Type> = vec![Type::I32, Type::I64];
+
+    let (a, b): (i32, i64) = ffi!(|scope| {
+      let mem: AllocatedMemory = scope.allocStruct(&shape)?;
+
+      Scope::writeDynamicStruct(mem.address(), &shape, vec![
+        Arg::from(7i32),
+        Arg::from(9_000_000_000i64),
+      ])?;
+
+      let fields: DynamicList = Scope::readDynamicStruct(mem.address(), &shape)?;
+      Ok((fields.get(0)?, fields.get(1)?))
+    }).expect("writeDynamicStruct/readDynamicStruct roundtrip failed");
+
+    assert_eq!((a, b), (7, 9_000_000_000));
+  }
+
+  // ===============================================================================================
+  
   /// Checks that `Scope::setReadErrno(true)` makes a plain `.result()` call
   /// (no `.errno()` on the call itself) surface errno via `Scope::lastErrno()`.
   #[test]
@@ -512,7 +584,7 @@ mod tests
   /// All operations use the same zygote and scope. The test also verifies that
   /// [`AllocatedMemory`] and [`Library`] remains tied to the scope lifetime.
   #[test]
-  fn with_scope_retention() -> ()
+  fn scopeRetention() -> ()
   {
     // Direct RAII form: hold the scope ourselves and run several ops through it.
     let (r1, r2): (f64, i32) = (|| -> Result<_, FFIError>

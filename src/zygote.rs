@@ -53,16 +53,21 @@ pub(super) enum FFIRequest
   /// `readErrno`: when true, the clone reads `errno` immediately after the C call
   /// returns and reports it back via [`FFIResponse::Ok`]'s second field. Costs one
   /// extra read when set — calls that don't need it can leave it `false`.
-  Call { 
-    libraryPath: String, 
-    functionName: String, 
-    args: Vec<Value>, 
-    resultType: Type, 
-    readErrno: bool 
+  Call {
+    libraryPath: String,
+    functionName: String,
+    args: Vec<Value>,
+    resultType: Type,
+    readErrno: bool
   },
 
   /// Allocates a block of memory of the specified length in the zygote address space.
   Alloc { length: usize },
+  /// Allocates enough memory to hold a dynamically-shaped struct — the byte
+  /// size (with correct platform padding/alignment) is computed by `libffi`
+  /// on the clone side from `fields`, not guessed by the caller. Response
+  /// carries both the pointer and the resolved size (see `executeFFI`).
+  AllocDynamicStruct { fields: Vec<Type> },
   /// Frees a previously allocated memory block by its pointer.
   Free { pointer: usize },
 
@@ -96,7 +101,7 @@ pub(super) enum FFIResponse
   /// immediately after the call — `Some` only if the request asked for it
   /// via `readErrno`, `None` otherwise (including for non-Call requests).
   Ok(Value, Option<i32>),
-  
+
   /// Execution failed with the corresponding error.
   Err(FFIError)
 }

@@ -349,10 +349,10 @@ fn prepareFFIArgs<'a>(
 /// so callers that don't need it pay nothing extra.
 #[inline]
 fn invokeFFI(
-  cif: &Cif, 
-  codePointer: CodePtr, 
-  argsFfi: &[Arg], 
-  ffiResultType: &Type, 
+  cif: &Cif,
+  codePointer: CodePtr,
+  argsFfi: &[Arg],
+  ffiResultType: &Type,
   readErrno: bool
 ) -> Result<Value, FFIError>
 {
@@ -635,6 +635,19 @@ pub(super) fn executeFFI(
       let ptr: *mut c_void = unsafe{ libc::malloc(length) };
       if ptr.is_null() { return Err(FFIError::Other("malloc returned null".to_string())); }
       Ok(Value::Pointer(ptr as usize))
+    },
+
+    FFIRequest::AllocDynamicStruct { fields } => {
+      // Same layout math ReadDynamicStruct/WriteDynamicStruct already rely
+      // on — `size` here is the one this shape actually needs on this ABI,
+      // not a hand-computed (and easily wrong) guess from the caller.
+      let (_offsets, size): (Vec<usize>, usize) = structLayout(&fields)?;
+      let ptr: *mut c_void = unsafe{ libc::malloc(size) };
+      if ptr.is_null() { return Err(FFIError::Other("malloc returned null".to_string())); }
+      // Bundles pointer + resolved size into one response — the caller
+      // needs both (`AllocatedMemory` tracks its own length) and doesn't
+      // have libffi's struct layout math available to recompute size itself.
+      Ok(Value::Struct(vec![Value::Pointer(ptr as usize), Value::Usize(size)]))
     },
 
     FFIRequest::Free { pointer } => {
