@@ -5,21 +5,22 @@ use chillffi::ffi::scope::Scope;
 use chillffi::ffi;
 // =================================================================================================
 
-/// todo desc (переписать проще)
+/// Example of passing a dynamically described C struct as an FFI call parameter.
 ///
-/// Mirrors chillffi issue #17:
+/// The example uses a function that accepts a pointer to a C struct allocated
+/// and populated entirely from Rust:
 ///
 /// ```c
 /// struct Data { int size; int *values; };
 /// void process(struct Data *data);
 /// ```
 ///
-/// `data` here is a pointer built entirely on the Rust side — the struct
-/// only exists as C source, so there's no Rust type to run `size_of` on for
-/// the allocation. [`Scope::allocStruct`] resolves the correct (ABI-aware,
-/// padding included) byte size from the field shape instead of it being
-/// guessed by hand, and [`Scope::writeDynamicStruct`] fills it in using
-/// that same layout math.
+/// Since the struct exists only on the C side, its layout is described at
+/// runtime with `Vec<Type>`. The struct memory is allocated and populated
+/// according to that layout, including ABI-required size and padding, while
+/// the separately allocated array is passed through the struct's pointer
+/// field. This demonstrates how dynamically described structs can be
+/// constructed and passed to C functions without a corresponding Rust type.
 fn main() -> ()
 {
   // struct Data { int size; int *values; }
@@ -48,9 +49,10 @@ fn main() -> ()
 
     // dataMem/valuesMem free themselves (Drop) when this block ends — process()
     // only read from `data`, it never took ownership of the allocation.
-    lib.call("getSum").result::<i32>()
+    lib.call("getSum").result()
   }).expect("dynamic struct parameter failed");
 
+  //
   println!("process(Data {{ size: {}, values: {:?} }}) -> sum = {sum}", values.len(), values);
   assert_eq!(sum, 60);
   println!("ok: dynamic struct as a call parameter");

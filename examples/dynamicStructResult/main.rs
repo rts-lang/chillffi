@@ -4,28 +4,20 @@ use chillffi::ffi::scope::Scope;
 use chillffi::ffi;
 // =================================================================================================
 
-/// todo desc (переписать проще)
-/// 
-/// Mirrors chillffi issue #18:
+/// Example of using a dynamically described C struct as an FFI call result.
+///
+/// The example covers a function returning `struct Data *`, where the struct
+/// contains both a regular field and a pointer field:
 ///
 /// ```c
 /// struct Data { int size; int *values; };
 /// struct Data *process();
 /// ```
 ///
-/// `process()` returns a *pointer* — at the C ABI level that's just a
-/// register-sized integer, so it's already callable with the ordinary
-/// `Pointer` result type; no special "struct return" support is needed for
-/// this shape. (Returning a struct *by value* is a separate, harder
-/// feature — see the `Type::Struct` todo in `worker.rs::invokeFFI`.)
-///
-/// What issue #18 actually needs is this recipe: declare the struct's
-/// layout as `Vec<Type>`, then dereference the returned pointer with
-/// [`Scope::readDynamicStruct`]. A field that is itself a pointer (`int
-/// *values`) is read as `Type::Pointer` and chased separately with
-/// [`Scope::readMemory`] — same as in C itself, there's no length
-/// information at the type level for a raw pointer, only in `size`, a
-/// sibling field.
+/// The returned struct is read using its runtime `Vec<Type>` layout, while
+/// the pointed-to data is read separately using the size stored in the
+/// struct. This demonstrates how pointer-returned structs and pointer fields
+/// can be handled without special struct-return support.
 fn main() -> ()
 {
   // struct Data { int size; int *values; }
