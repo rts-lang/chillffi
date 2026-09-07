@@ -7,7 +7,7 @@ pub use pointer::Pointer;
 mod dynamicList;
 pub use dynamicList::DynamicList;
 // =================================================================================================
-pub(crate) mod arg;
+pub mod arg;
 pub use arg::Arg;
 pub(crate) use arg::FfiArg;
 // =================================================================================================
@@ -34,6 +34,54 @@ pub(crate) trait PrimitiveValue: Primitive
   fn toValue(self) -> Value;
 }
 
+// =================================================================================================
+
+/// Mirrors `arg::private`: hides [`Value`]/[`PrimitiveValue`] behind the
+/// already-public [`Arg`] wrapper, so the methods below never name a
+/// `pub(crate)` type in their own signature.
+pub mod private
+{
+  use super::{Arg, PrimitiveValue};
+  use crate::ffi::errors::FFIError;
+
+  pub trait Sealed {}
+  impl<T: PrimitiveValue> Sealed for T {}
+
+  pub trait FromFfiValue: Sized
+  {
+    /// Converts a dynamic [`Arg`] into a concrete primitive type.
+    fn fromFfiValue(arg: Arg) -> Result<Self, FFIError>;
+
+    /// Converts this primitive into a dynamic [`Arg`].
+    fn toFfiValue(self) -> Arg;
+  }
+
+  impl<T: PrimitiveValue> FromFfiValue for T
+  {
+    /// todo desc
+    fn fromFfiValue(arg: Arg) -> Result<Self, FFIError>
+    {
+      T::fromValue(arg.0)
+    }
+    
+    /// todo desc
+    fn toFfiValue(self) -> Arg
+    {
+      Arg(self.toValue())
+    }
+  }
+}
+
+/// Sealed marker trait for concrete types producible as an FFI call/read
+/// result. Only crate-internal [`PrimitiveValue`] implementors satisfy it —
+/// external crates cannot name `PrimitiveValue` to implement this either —
+/// which keeps [`Value`] and [`PrimitiveValue`] out of the public API while
+/// still letting `T: FfiPrimitive` appear in `pub fn` signatures.
+pub trait FfiPrimitive: Primitive + private::Sealed + private::FromFfiValue {}
+impl<T: PrimitiveValue> FfiPrimitive for T {}
+
+// =================================================================================================
+
 /// Declares a binding between a primitive and a [`Value`] type.
 macro_rules! implFFIPrimitive
 {
@@ -56,7 +104,10 @@ macro_rules! implFFIPrimitive
       }
 
       /// Wraps this primitive value into its corresponding [`Value`] enum variant.
-      fn toValue(self) -> Value { Value::$variant(self) }
+      fn toValue(self) -> Value
+      {
+        Value::$variant(self)
+      }
     }
     
     impl From<$rustType> for Value
@@ -69,7 +120,8 @@ macro_rules! implFFIPrimitive
 
 // =================================================================================================
 
-// Declaration of all primitive types
+// Declaration of all primitive types.
+
 implFFIPrimitive!(u8, U8);
 implFFIPrimitive!(u16, U16);
 implFFIPrimitive!(u32, U32);

@@ -1,5 +1,5 @@
 use crate::ffi::errors::FFIError;
-use crate::ffi::types::primitive::{PrimitiveValue};
+use crate::ffi::types::primitive::{Arg, FfiPrimitive};
 use crate::ffi::types::Value;
 // =================================================================================================
 
@@ -10,10 +10,10 @@ pub struct DynamicList
   values: Vec<Value>
 }
 
-impl DynamicList 
+impl DynamicList
 {
   /// Creates a wrapper from a vector of values.
-  /// 
+  ///
   /// (due to [`Value`] being used only within the crate)
   pub(crate) const fn fromValues(values: Vec<Value>) -> Self
   {
@@ -33,12 +33,12 @@ impl DynamicList
   }
 
   /// Extracts a field by index and converts it into the required type `T`.
-  pub fn get<T: PrimitiveValue>(&self, index: usize) -> Result<T, FFIError> 
+  pub fn get<T: FfiPrimitive>(&self, index: usize) -> Result<T, FFIError>
   {
     self.values
       .get(index)
       .ok_or_else(|| FFIError::Other(format!("field index {} out of bounds", index)))
-      .and_then(|v| T::fromValue(v.clone()))
+      .and_then(|v| T::fromFfiValue(Arg(v.clone())))
   }
 }
 
