@@ -616,7 +616,7 @@ fn writeRet(ret: &mut std::ffi::c_void, value: Value, t: &Type)
 // =================================================================================================
 
 /// Dispatches an FFI request inside the zygote clone to the appropriate handler.
-pub(super) fn executeFFI(
+pub fn executeFFI(
   request: FFIRequest,
   cache: &mut FxHashMap<String, Library>
 ) -> Result<Value, FFIError>

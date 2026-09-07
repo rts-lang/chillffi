@@ -2,6 +2,7 @@ use crate::ffi::callback::Primitive;
 use crate::ffi::callback::Value;
 use crate::ffi::callback::Callable;
 use crate::ffi::callback::DynamicList;
+use crate::ffi::types::primitive::PrimitiveValue;
 // =================================================================================================
 
 /// The type-erased, dynamically callable form of a [`callback!`] closure —
@@ -24,7 +25,7 @@ impl ErasedCallable
   /// Wraps a decoded capture-state tuple plus the macro-generated typed
   /// entry point into the erased, dispatcher-facing callable.
   #[doc(hidden)]
-  pub fn fromStateAndFn<State: Send + 'static, Output: Primitive + 'static>(
+  pub fn fromStateAndFn<State: Send + 'static, Output: PrimitiveValue + 'static>(
     state: State,
     typedFn: fn(&State, &DynamicList) -> Output
   ) -> Self
@@ -55,14 +56,14 @@ struct StateFnAdapter<State: Send + 'static, Output: Primitive + 'static>
   typedFn: fn(&State, &DynamicList) -> Output
 }
 
-impl<State: Send + 'static, Output: Primitive + 'static> 
+impl<State: Send + 'static, Output: PrimitiveValue + 'static> 
   Callable<DynamicList, Value> for StateFnAdapter<State, Output>
 {
   fn call(&self, args: DynamicList) -> Value
   {
     // The typed entry point returns the closure's concrete return type;
     // convert it to the dynamic form the C-side marshalling understands.
-    <Output as Primitive>::toValue((self.typedFn)(&self.state, &args))
+    <Output as PrimitiveValue>::toValue((self.typedFn)(&self.state, &args))
   }
 }
 

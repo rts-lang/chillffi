@@ -1,5 +1,5 @@
 use crate::errnoPolicy::globalReadErrno;
-use crate::ffi::types::primitive::Arg;
+use crate::ffi::types::primitive::{Arg, PrimitiveValue};
 use crate::ffi::types::primitive::Callback;
 use crate::ffi::types::primitive::DynamicList;
 use crate::ffi::types::primitive::Primitive;
@@ -298,7 +298,7 @@ impl<'g> Scope<'g>
   /// call (C ABI functions returning function pointers exist — e.g. libc's
   /// `signal()` both takes and returns one), or read out of a dispatch table
   /// via `readMemory`.
-  pub fn callPointer<T: Primitive>(
+  pub fn callPointer<T: PrimitiveValue>(
     &self,
     pointer: impl Into<usize>,
     args: Vec<Arg>
@@ -322,7 +322,7 @@ impl<'g> Scope<'g>
   /// no builder to chain `.errno()` onto, since `callPointer` skips `CallBuilder`
   /// entirely. Read it back via [`Scope::lastErrno`].
   #[inline]
-  pub fn callPointerErrno<T: Primitive>(
+  pub fn callPointerErrno<T: PrimitiveValue>(
     &self,
     pointer: impl Into<usize>,
     args: Vec<Arg>
@@ -334,7 +334,7 @@ impl<'g> Scope<'g>
   /// Shared implementation: resolves the effective `readErrno` flag (explicit
   /// override, else scope, else global — same order as `CallBuilder::result`)
   /// and sends the request.
-  fn callPointerImpl<T: Primitive>(
+  fn callPointerImpl<T: PrimitiveValue>(
     &self,
     pointer: impl Into<usize>,
     args: Vec<Arg>,

@@ -1,5 +1,5 @@
 use crate::ffi::errors::FFIError;
-use crate::ffi::types::primitive::Primitive;
+use crate::ffi::types::primitive::{PrimitiveValue};
 use crate::ffi::types::Value;
 // =================================================================================================
 
@@ -33,7 +33,7 @@ impl DynamicList
   }
 
   /// Extracts a field by index and converts it into the required type `T`.
-  pub fn get<T: Primitive>(&self, index: usize) -> Result<T, FFIError> 
+  pub fn get<T: PrimitiveValue>(&self, index: usize) -> Result<T, FFIError> 
   {
     self.values
       .get(index)

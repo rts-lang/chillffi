@@ -1,6 +1,6 @@
 use crate::errnoPolicy::globalReadErrno;
 use crate::ffi::types::Type;
-use crate::ffi::types::primitive::Primitive;
+use crate::ffi::types::primitive::{Primitive, PrimitiveValue};
 use crate::ffi::types::primitive::FfiArg;
 use crate::ffi::types::Value;
 use crate::ffi::scope::currentScopeReadErrno;
@@ -259,7 +259,7 @@ impl<'a, 'g> CallBuilder<'a, 'g>
 
   /// Finalize: execute and return a typed result.
   #[inline]
-  pub fn result<T: Primitive>(self) -> Result<T, FFIError>
+  pub fn result<T: PrimitiveValue>(self) -> Result<T, FFIError>
   {
     let readErrno: bool = resolveReadErrno(self.readErrno);
     self.lib.__call(&self.name, self.args, readErrno)
@@ -290,7 +290,7 @@ impl<'g> Library<'g>
   /// todo It should be completely hidden and not work directly
   #[inline]
   #[doc(hidden)]
-  pub fn __call<T: Primitive>(
+  pub(crate) fn __call<T: PrimitiveValue>(
     &self, 
     functionName: &str, 
     args: Vec<Value>, 
@@ -306,7 +306,7 @@ impl<'g> Library<'g>
   /// todo It should be completely hidden and not work directly
   #[inline]
   #[doc(hidden)]
-  pub fn __callv(
+  pub(crate) fn __callv(
     &self, 
     functionName: &str, 
     args: Vec<Value>

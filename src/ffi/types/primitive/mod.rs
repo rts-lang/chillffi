@@ -18,14 +18,18 @@ use crate::ffi::errors::FFIError;
 use crate::ffi::types::{Value, Type};
 // =================================================================================================
 
-/// Bridges a concrete Rust primitive to its [`Value`]/[`Type`] tag.
+/// Bridges a concrete Rust primitive to its [`Type`] tag.
 pub trait Primitive: Sized
 {
   const TypeTag: Type;
+}
 
+/// Internal conversion between a concrete Rust primitive and its [`Value`].
+pub(crate) trait PrimitiveValue: Primitive
+{
   /// Converts a dynamic [`Value`] into a concrete primitive type.
   fn fromValue(value: Value) -> Result<Self, FFIError>;
-  
+
   /// Converts this primitive into a dynamic [`Value`].
   fn toValue(self) -> Value;
 }
@@ -38,7 +42,10 @@ macro_rules! implFFIPrimitive
     impl Primitive for $rustType
     {
       const TypeTag: Type = Type::$variant;
+    }
 
+    impl PrimitiveValue for $rustType
+    {
       /// Parses the specific [`Value`] variant into this primitive type.
       fn fromValue(value: Value) -> Result<Self, FFIError>
       {
