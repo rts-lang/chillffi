@@ -15,19 +15,19 @@ impl DynamicList
   /// Creates a wrapper from a vector of values.
   /// 
   /// (due to [`Value`] being used only within the crate)
-  pub(crate) fn fromValues(values: Vec<Value>) -> Self 
+  pub(crate) const fn fromValues(values: Vec<Value>) -> Self
   {
     Self { values }
   }
 
   /// Returns the number of fields in the structure.
-  pub fn len(&self) -> usize 
+  pub const fn len(&self) -> usize
   {
     self.values.len()
   }
 
   /// Checks whether the structure is empty.
-  pub fn isEmpty(&self) -> bool 
+  pub const fn isEmpty(&self) -> bool
   {
     self.values.is_empty()
   }

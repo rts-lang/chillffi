@@ -378,8 +378,8 @@ impl<'g> Scope<'g>
     sendRawRequest(FFIRequest::RegisterCallback {
       id,
       bytes: f.encode().expect("encode callback"),
-      argTypes: f.argTypes.clone(),
-      returnType: f.returnType.clone()
+      argTypes: f.argTypes,
+      returnType: f.returnType
     }).expect("register callback failed");
 
     Callback(id)
