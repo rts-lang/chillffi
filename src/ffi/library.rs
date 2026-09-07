@@ -1,6 +1,6 @@
 use crate::errnoPolicy::globalReadErrno;
 use crate::ffi::types::Type;
-use crate::ffi::types::primitive::{Primitive, PrimitiveValue};
+use crate::ffi::types::primitive::PrimitiveValue;
 use crate::ffi::types::primitive::FfiArg;
 use crate::ffi::types::Value;
 use crate::ffi::scope::currentScopeReadErrno;
@@ -234,7 +234,7 @@ impl<'a, 'g> CallBuilder<'a, 'g>
   #[inline]
   pub fn arg<T: FfiArg>(mut self, arg: T) -> Self
   {
-    self.args.push(arg.intoFfiValue());
+    self.args.push(arg.intoFfiValue().0);
     self
   }
 

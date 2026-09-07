@@ -7,7 +7,7 @@ pub use pointer::Pointer;
 mod dynamicList;
 pub use dynamicList::DynamicList;
 // =================================================================================================
-mod arg;
+pub(crate) mod arg;
 pub use arg::Arg;
 pub(crate) use arg::FfiArg;
 // =================================================================================================
