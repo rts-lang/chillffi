@@ -484,13 +484,11 @@ fn readArg(ptr: *const std::ffi::c_void, t: &Type) -> Value
     Type::Bool => Value::Bool(unsafe { *(ptr as *const u8) != 0 }),
     Type::Pointer => Value::Pointer(unsafe { *(ptr as *const usize) }),
     Type::Struct(fields) =>
-      // todo fix desc:
-      //  Struct-typed callback arguments (e.g. a qsort-style comparator taking
-      //  a struct by value): `ptr` already points at the field's own bytes —
-      //  same shape `readStructAt` expects. No error channel exists at this
-      //  C-ABI boundary (same reasoning as `CallbackPanicked`), so a failure
-      //  here — a genuinely malformed field list — degrades to `Value::None`
-      //  rather than unwinding into C.
+      // Struct-typed callback arguments (e.g. a qsort-style comparator taking
+      // a struct by value): `ptr` points to the struct's own bytes, exactly
+      // what `readStructAt` expects. No error channel exists at this C-ABI
+      // boundary, so a malformed field list degrades to `Value::None` rather
+      // than unwinding into C.
       readStructAt(ptr as usize, fields).unwrap_or(Value::None)
   }
 }
@@ -660,10 +658,10 @@ pub(super) fn executeFFI(
         return Err(FFIError::Other("AllocAligned: alignment must be a power of 2".to_string()));
       }
 
-      // todo desc
+      // Prepare an out-parameter for posix_memalign.
       let mut ptr: *mut c_void = std::ptr::null_mut();
       let result: i32 = unsafe { libc::posix_memalign(&mut ptr, align, length) };
-      // todo desc
+      // Non-zero return means posix_memalign failed (e.g. bad alignment).
       if result != 0 {
         return Err(FFIError::Other(format!("posix_memalign failed with code {}", result)));
       }
@@ -677,60 +675,62 @@ pub(super) fn executeFFI(
     }
 
     FFIRequest::ReadMemory { pointer, length } => {
-      // todo desc
+      // Reject a null pointer
       if pointer == 0 {
         return Err(FFIError::BadArgument("null pointer".to_string()));
       }
-      
-      // todo desc
+
+      // Treat the pointer as a byte slice of the requested length.
       let slice: &[u8] = unsafe{ std::slice::from_raw_parts(pointer as *const u8, length) };
       Ok(Value::RawString(slice.to_vec()))
     },
 
     FFIRequest::WriteMemory { pointer, value } => {
-      // todo desc
+      // Reject a null pointer
       if pointer == 0 {
         return Err(FFIError::BadArgument("null pointer".to_string()));
       }
-      
-      // todo desc
+
+      // Only RawString and CString payloads are accepted for memory writes.
+      //
+      // todo Is this a limitation? Or is this a normal state.
       let bytes: &[u8] = match &value {
         Value::RawString(v) | Value::CString(v) => v.as_slice(),
         _ => return Err(FFIError::BadArgument("expected RawString or CString for WriteMemory".to_string())),
       };
-      
-      // todo desc
+
+      // Copy the bytes into the target process memory.
       unsafe{ std::ptr::copy_nonoverlapping(bytes.as_ptr(), pointer as *mut u8, bytes.len()) };
       Ok(Value::None)
     }
 
     FFIRequest::ReadDynamicStruct { pointer, fields } => {
-      // todo desc
+      // Reject a null pointer
       if pointer == 0 {
         return Err(FFIError::BadArgument("null pointer".to_string()));
       }
-      
-      // todo desc
+
+      // Read the dynamically-typed struct fields at the given pointer.
       readStructAt(pointer, &fields)
     }
 
     FFIRequest::WriteDynamicStruct { pointer, fields, values } => {
-      // todo desc
+      // Reject a null pointer
       if pointer == 0 {
         return Err(FFIError::BadArgument("null pointer".to_string()));
       }
-      
-      // todo desc
+
+      // Write the provided field values into the struct at the pointer.
       writeStructAt(pointer, &fields, &values)?;
       Ok(Value::None)
     }
 
     FFIRequest::RegisterCallback { id, bytes, argTypes, returnType } => {
-      // todo desc
+      // Decode the serialized closure from the parent's byte buffer.
       let wrapper: ErasedCallable = decode(&bytes)
         .map_err(|e| FFIError::Other(format!("call decode failed: {e}")))?;
 
-      // todo desc
+      // Build the libffi call interface for the callback trampoline.
       let cif: Cif = buildCif(&argTypes, &returnType)?;
       let leaked: &mut CallbackWrapper = Box::leak(Box::new(CallbackWrapper {
         closure: wrapper,
@@ -739,7 +739,7 @@ pub(super) fn executeFFI(
       }));
       let closure: Closure = Closure::new(cif, trampoline, leaked);
 
-      // todo desc
+      // Extract the JIT-compiled trampoline's raw C function pointer.
       let codeAddr: usize = *closure.code_ptr() as usize;
       let codePointer: *mut c_void = codeAddr as *mut c_void;
       registry().lock().insert(id, CallbackEntry { closure, codePointer });

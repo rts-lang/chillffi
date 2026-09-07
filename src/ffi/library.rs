@@ -203,13 +203,13 @@ impl<'g> Drop for Library<'g>
 #[doc(hidden)]
 pub struct CallBuilder<'a, 'g>
 {
-  /// todo desc
+  /// The library against which the call is issued.
   lib: &'a Library<'g>,
-  
-  /// todo desc
+
+  /// Name of the function to look up and call.
   name: String,
-  
-  /// todo desc
+
+  /// Arguments collected for the call, in order.
   args: Vec<Value>,
   
   /// Per-call override of errno capture. `None` falls through to the
