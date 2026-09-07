@@ -44,8 +44,13 @@ struct CallbackEntry
   codePointer: *mut c_void
 }
 
-/// Safety: CallbackRegistry is used exclusively within a single fork-clone,
-/// which operates as a single-threaded process.
+/// Safety: the captured closure state is already provably `Send`
+/// (`Callable: Send`, `StateFnAdapter<State: Send, ...>`). The remaining
+/// state — `Closure`'s raw pointer into a fixed JIT-compiled mmap region,
+/// plus `codePointer` — has no thread affinity and no non-atomic shared
+/// state; all access goes through `registry()`'s `Mutex`, which is what
+/// actually makes cross-thread hand-off sound, not single-threading.
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for CallbackEntry {}
 
 /// Global map storing registered JIT-compiled callbacks by their unique IDs.
@@ -70,7 +75,7 @@ thread_local!{
 /// Takes (and clears) the errno captured by the most recent call, if any.
 /// Called once per request by `zygote::handleRequest` to build the response —
 /// `None` means either the call didn't ask for errno, or this request wasn't a call at all.
-pub(super) fn takeLastErrno() -> Option<i32>
+pub fn takeLastErrno() -> Option<i32>
 {
   LastErrno.with(|e| e.take())
 }
@@ -239,7 +244,9 @@ fn prepareFFIArgs<'a>(
           let entry: &CallbackEntry = reg
             .get(id)
             .ok_or_else(|| FFIError::Other(format!("callback {} not registered", id)))?;
-          entry.codePointer
+          let ptr: *mut c_void = entry.codePointer;
+          drop(reg);
+          ptr
         };
         storage.push(Box::new(codePointer));
       }

@@ -58,13 +58,11 @@ pub mod private
 
   impl<T: PrimitiveValue> FromFfiValue for T
   {
-    /// todo desc
     fn fromFfiValue(arg: Arg) -> Result<Self, FFIError>
     {
       T::fromValue(arg.0)
     }
     
-    /// todo desc
     fn toFfiValue(self) -> Arg
     {
       Arg(self.toValue())
