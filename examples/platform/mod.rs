@@ -41,7 +41,9 @@ mod macos
   pub const EtcHostnameString: &str = "/etc/hosts";
   #[allow(dead_code)]
   pub const EtcHostnameCString: &std::ffi::CStr = c"/etc/hosts";
-  #[allow(dead_code)]
+  #[cfg(target_arch = "aarch64")]
+  pub const StatSymbolName: &str = "stat";
+  #[cfg(target_arch = "x86_64")]
   pub const StatSymbolName: &str = "stat$INODE64"; // Важно: на Intel нужно явно брать 64-bit версию
 }
 
