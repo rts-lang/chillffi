@@ -165,6 +165,7 @@ mod tests
   use crate::ffi;
   use crate::ffi::allocatedMemory::AllocatedMemory;
   use bytemuck::{Pod, Zeroable};
+  use crate::platform::LibcPath;
   // ===============================================================================================
 
   /// Checks reading memory via [`AllocatedMemory::read`].
@@ -174,7 +175,7 @@ mod tests
     let bytes: Vec<u8> = ffi!(|scope| {
       let mem: AllocatedMemory = scope.alloc(8)?;
 
-      let libc: Library = scope.load("libc.so.6")?;
+      let libc: Library = scope.load(LibcPath)?;
       // void *memset(void *s, int c, size_t n) — fills 8 bytes with 0xAB
       libc.call("memset")
         .arg(mem.asPointer())
@@ -197,7 +198,7 @@ mod tests
 
       mem.write(c"hello")?;
 
-      let libc: Library = scope.load("libc.so.6")?;
+      let libc: Library = scope.load(LibcPath)?;
       let result: usize = libc.call("strlen").arg(mem.asPointer()).result()?;
 
       Ok(result)
@@ -267,7 +268,7 @@ mod tests
       let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<TestStruct>())?;
 
       // Use memset to fill with a known pattern first
-      let libc: Library = scope.load("libc.so.6")?;
+      let libc: Library = scope.load(LibcPath)?;
       libc.call("memset")
         .arg(mem.asPointer())
         .arg::<i32>(0xFF)
@@ -290,7 +291,7 @@ mod tests
     struct Timespec { secs: i64, nanos: i64 }
 
     let ts: Timespec = ffi!(|scope| {
-      let libc: Library = scope.load("libc.so.6")?;
+      let libc: Library = scope.load(LibcPath)?;
       let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<Timespec>())?;
 
       libc.call("clock_gettime")

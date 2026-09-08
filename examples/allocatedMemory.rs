@@ -1,3 +1,5 @@
+mod platform;
+// =================================================================================================
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::errors::FFIError;
 use chillffi::ffi;

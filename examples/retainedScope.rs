@@ -1,6 +1,9 @@
+mod platform;
+// =================================================================================================
 use chillffi::ffi::scope::{FFIScope, Scope};
 use chillffi::ffi::library::Library;
 use chillffi::ffi::errors::FFIError;
+use crate::platform::LibcPath;
 // =================================================================================================
 
 /// Get file size via libc's stat using the non-macro FFIScope entry point.
@@ -15,7 +18,7 @@ fn main() -> ()
     let ffiScope: FFIScope = FFIScope::enter()?;
     let scope: Scope<'_> = ffiScope.scope();
 
-    let libc: Library = scope.load("libc.so.6")?;
+    let libc: Library = scope.load(LibcPath)?;
 
     // Allocate memory for the out-parameter.
     // struct stat — 144 bytes on x86_64 Linux (glibc)
