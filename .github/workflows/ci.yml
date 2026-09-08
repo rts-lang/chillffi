@@ -36,3 +36,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2 # Кеширование.
       - run: cargo test # Сейчас надо только test для проверки совместимости.
+      # todo Возможно запуск examples, чтобы проверить именно работу, 
+      #  хотя test уже проверяет сборку примеров.
