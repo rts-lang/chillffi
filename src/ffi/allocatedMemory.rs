@@ -168,7 +168,7 @@ mod tests
   use crate::platform::LibcPath;
   // ===============================================================================================
 
-  /// Checks reading memory via [`AllocatedMemory::read`].
+  /// Reading memory via [`AllocatedMemory::read`].
   #[test]
   fn read() -> ()
   {
@@ -189,7 +189,7 @@ mod tests
     assert_eq!(bytes, vec![0xABu8; 8]);
   }
 
-  /// Checks writing memory via [`AllocatedMemory::write`].
+  /// Writing memory via [`AllocatedMemory::write`].
   #[test]
   fn write() -> ()
   {
@@ -209,7 +209,7 @@ mod tests
 
   // ===============================================================================================
 
-  /// A simple C-like struct for testing readStruct/writeStruct
+  /// A simple C-like struct for readStruct/writeStruct.
   #[repr(C)]
   #[derive(Copy, Clone, Pod, Zeroable, Debug, PartialEq)]
   struct TestStruct
@@ -218,7 +218,7 @@ mod tests
     b: i64,
   }
 
-  /// Checks readStruct and writeStruct roundtrip.
+  /// readStruct and writeStruct roundtrip.
   #[test]
   fn readWriteStruct() -> ()
   {
@@ -237,7 +237,23 @@ mod tests
     assert_eq!(original, read, "readStruct should return what was written");
   }
 
-  /// Checks readStruct from a memset-filled buffer.
+  /// Только memset, без последующего read.
+  #[test]
+  fn memsetOnly() -> ()
+  {
+    ffi!(|scope| {
+    let mem: AllocatedMemory = scope.alloc(16)?;
+    let libc: Library = scope.load(LibcPath)?;
+    libc.call("memset")
+      .arg(mem.asPointer())
+      .arg::<i32>(0xFF)
+      .arg::<usize>(16)
+      .void()?;
+    Ok(())
+  }).expect("memset-only failed");
+  }
+
+  /// readStruct from a memset-filled buffer.
   #[test]
   fn readStructFromMemset() -> ()
   {
@@ -259,7 +275,7 @@ mod tests
     assert_eq!(result.b, 0xFFFFFFFFFFFFFFFFu64 as i64, "i64 should be 0xFFFFFFFFFFFFFFFF");
   }
 
-  /// Checks readStruct via FFI call (clock_gettime).
+  /// readStruct via FFI call (clock_gettime).
   #[test]
   fn readStructFromFFI() -> ()
   {
