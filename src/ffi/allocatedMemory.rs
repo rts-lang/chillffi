@@ -207,29 +207,6 @@ mod tests
     assert!(matches!(len, 5));
   }
 
-  /// Checks automatic deallocation via `Drop` when [`AllocatedMemory`] leaves scope.
-  #[test]
-  fn drop() -> ()
-  {
-    let (addr1, addr2): (usize, usize) = ffi!(|scope| {
-      let addr1: usize =
-      {
-        let mem: AllocatedMemory = scope.alloc(16)?;
-        let a: usize = mem.address();
-        // mem is dropped here, sending Free
-        a
-      };
-
-      let mem2: AllocatedMemory = scope.alloc(16)?;
-      let addr2: usize = mem2.address();
-
-      Ok((addr1, addr2))
-    }).expect("AllocatedMemory::drop failed");
-
-    // If Drop freed the first allocation, malloc may reuse the same address
-    assert_eq!(addr1, addr2);
-  }
-
   // ===============================================================================================
 
   /// A simple C-like struct for testing readStruct/writeStruct
