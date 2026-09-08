@@ -34,7 +34,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2 # Кеширование.
-      - run: cargo test # Сейчас надо только test для проверки совместимости.
-      # todo Возможно запуск examples, чтобы проверить именно работу, 
-      #  хотя test уже проверяет сборку примеров.
+      - uses: Swatinem/rust-cache@v2 # Кеширование;
+        with:
+          cache-on-failure: true # Делаем всегда.
+      
+      # Проверка сборки и совместимости.
+      - name: Run tests
+        run: cargo test
+      
+      # Проверка примеров.
+      - name: Run examples
+        shell: bash
+        run: |
+          set -uo pipefail
+          
+          failed=0
+          
+          while read -r name; do
+            echo "==> example: $name"
+          
+            output_file="$(mktemp)"
+          
+            if cargo run --quiet --example "$name" >"$output_file" 2>&1; then
+              echo "    ok"
+              rm -f "$output_file"
+            else
+              echo "    FAILED"
+              cat "$output_file"
+              rm -f "$output_file"
+              failed=1
+            fi
+          
+          done < <(
+            cargo metadata --no-deps --format-version 1 |
+              jq -r '
+                .packages[].targets[]
+                | select(.kind[] == "example")
+                | .name
+              ' |
+              sort -u
+          )
+          
+          exit "$failed"
