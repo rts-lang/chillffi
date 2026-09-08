@@ -1,5 +1,10 @@
 name: CI
 
+# Мы не проверяем тут warns - это дело ручной проверки и правок.
+# Поэтому этот CI нужен только для проверки сборки и совместимости.
+# Кроме того он позволяет удобно проверять все у себя и делать PR
+# в линейную историю - которая строга залочена без других веток.
+
 on:
   # Это нужно для обязательной финальной проверки PR.
   pull_request:
@@ -26,13 +31,17 @@ jobs:
       fail-fast: false
       matrix:
         os:
+          - ubuntu-26.04 # x86_64
           - ubuntu-24.04 # x86_64
+          - ubuntu-26.04-arm # ARM64
           - ubuntu-24.04-arm # ARM64
+          - macos-26 # ARM64 (Apple Silicon)
           - macos-15 # ARM64 (Apple Silicon)
+          - macos-26-intel # x86_64
           - macos-15-intel # x86_64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2 # Кеширование;
         with:
