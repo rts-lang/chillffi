@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  # Это нужно для обязательной финальной проверки PR.
+  pull_request:
+    branches: [main]
+  # Это нужно для ручной проверки своих изменений;
+  # Не мешает частой проверкой.
+  workflow_dispatch:
+
+concurrency:
+  # github.head_ref есть только для pull_request (имя source-ветки).
+  # github.ref для push (refs/heads/branch-name).
+  # Выражение даёт одинаковый ключ для обоих событий на одной ветке.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Разрешаем:
+    # - любые pull_request
+    # - workflow_dispatch только НЕ с main
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04 # x86_64
+          - ubuntu-24.04-arm # ARM64
+          - macos-15 # ARM64 (Apple Silicon)
+          - macos-15-intel # x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2 # Кеширование.
+      - run: cargo test # Сейчас надо только test для проверки совместимости.
