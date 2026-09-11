@@ -269,6 +269,7 @@ impl ClonedZygote
         io::Error::other("Main zygote failed to create a clone (channel/fork failed)")
       )
     }
+    //
   }
 
   /// FFI call inside a specific clone.
@@ -378,7 +379,7 @@ pub fn initZygote() -> io::Result<()>
 /// tests on Darwin (Runtime received a dead FD while the clone was still waiting).
 pub fn spawnZygote() -> io::Result<ZygoteHandle>
 {
-  // todo desc
+  // Creates a one-shot IPC server to establish initial control channel with the zygote.
   let (server, serverName): (IpcOneShotServer<BootstrapToRuntime>, String) =
     IpcOneShotServer::new().map_err(io::Error::other)?;
 
@@ -459,17 +460,17 @@ fn zygoteLoop(serverName: String) -> !
   }
   drop(bootstrapTx);
 
-  // todo desc
+  // Infinite event loop processing control commands from the main Runtime.
   loop
   {
-    // todo desc
+    // Blocks until a new command is received via the control channel.
     let cmd: ZygoteCommand = match commandRx.recv()
     {
       Ok(c) => c,
       Err(_) => std::process::exit(0) // Runtime / control channel died
     };
 
-    // todo desc
+    // Routes and executes the received control command.
     match cmd
     {
       ZygoteCommand::SpawnClone =>
@@ -496,7 +497,7 @@ fn zygoteLoop(serverName: String) -> !
           }
         };
 
-        // todo desc
+        // Forks the main zygote to spawn a fresh, clean clone process.
         match unsafe{ libc::fork() }
         {
           -1 =>
@@ -573,6 +574,8 @@ fn zygoteLoop(serverName: String) -> !
   }
 }
 
+// =================================================================================================
+
 /// Personal clone loop.
 ///
 /// Waits for [`FFIRequest`] from Runtime, runs the operation, sends [`FFIResponse`].
@@ -629,7 +632,7 @@ fn supervisorLoop() -> ()
 {
   loop
   {
-    // todo desc
+    // Retrieves the PID of the currently active main zygote for monitoring.
     let pidToWait: u32 = {
       let mutex: &Mutex<ZygoteHandle> = match ZygoteState.get()
       {
@@ -638,10 +641,11 @@ fn supervisorLoop() -> ()
       };
       mutex.lock().process.id()
     };
-    // todo desc
+
+    // Blocks the supervisor thread until the monitored main zygote process terminates.
     unsafe{ libc::waitpid(pidToWait as libc::pid_t, std::ptr::null_mut(), 0); }
 
-    // todo desc
+    // Acquires the global state lock to replace the terminated zygote with a new instance.
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock();
     if guard.process.id() == pidToWait // Not recreated in parallel yet through call()
