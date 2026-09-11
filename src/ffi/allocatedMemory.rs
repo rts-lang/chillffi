@@ -95,20 +95,20 @@ impl<'g> AllocatedMemory<'g>
   /// guaranteed correct by the type system rather than by manually calculated offsets.
   pub fn readStruct<T: Pod + Zeroable>(&self) -> Result<T, FFIError>
   {
-    let expected_size: usize = std::mem::size_of::<T>();
-    if self.length < expected_size {
+    let expectedSize: usize = size_of::<T>();
+    if self.length < expectedSize {
       return Err(FFIError::Other(format!(
         "readStruct: buffer is {} bytes, but T is {} bytes",
-        self.length, expected_size
+        self.length, expectedSize
       )));
     }
 
     // Read raw bytes from zygote memory
     let bytes: Vec<u8> = self.read()?;
-    if bytes.len() < expected_size {
+    if bytes.len() < expectedSize {
       return Err(FFIError::Other(format!(
         "readStruct: received {} bytes, expected at least {}",
-        bytes.len(), expected_size
+        bytes.len(), expectedSize
       )));
     }
 
@@ -116,7 +116,7 @@ impl<'g> AllocatedMemory<'g>
     // Safety is enforced at compile time by T: Pod (which guarantees
     // no padding, no uninit, no Drop, no invalid bit patterns).
     // If T has padding, derive(Pod) would fail and this wouldn't compile.
-    Ok(bytemuck::pod_read_unaligned::<T>(&bytes[..expected_size]))
+    Ok(bytemuck::pod_read_unaligned::<T>(&bytes[..expectedSize]))
   }
 
   /// Writes a statically-typed C struct `T` into the allocated memory buffer.
@@ -126,11 +126,11 @@ impl<'g> AllocatedMemory<'g>
   /// The entire struct is serialized to bytes and written to the zygote's memory.
   pub fn writeStruct<T: Pod + Zeroable>(&self, value: &T) -> Result<(), FFIError>
   {
-    let expected_size: usize = std::mem::size_of::<T>();
-    if self.length < expected_size {
+    let expectedSize: usize = size_of::<T>();
+    if self.length < expectedSize {
       return Err(FFIError::Other(format!(
         "writeStruct: buffer is {} bytes, but T is {} bytes",
-        self.length, expected_size
+        self.length, expectedSize
       )));
     }
 
@@ -215,7 +215,7 @@ mod tests
   struct TestStruct
   {
     a: i64,
-    b: i64,
+    b: i64
   }
 
   /// readStruct and writeStruct roundtrip.
@@ -223,7 +223,7 @@ mod tests
   fn readWriteStruct() -> ()
   {
     let (original, read): (TestStruct, TestStruct) = ffi!(|scope| {
-      let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<TestStruct>())?;
+      let mem: AllocatedMemory = scope.alloc(size_of::<TestStruct>())?;
 
       let original: TestStruct = TestStruct { a: 42, b: 0x123456789ABCDEF0i64 };
 
@@ -258,14 +258,14 @@ mod tests
   fn readStructFromMemset() -> ()
   {
     let result: TestStruct = ffi!(|scope| {
-      let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<TestStruct>())?;
+      let mem: AllocatedMemory = scope.alloc(size_of::<TestStruct>())?;
 
       // Use memset to fill with a known pattern first
       let libc: Library = scope.load(LibcPath)?;
       libc.call("memset")
         .arg(mem.asPointer())
         .arg::<i32>(0xFF)
-        .arg::<usize>(std::mem::size_of::<TestStruct>())
+        .arg::<usize>(size_of::<TestStruct>())
         .void()?;
 
       mem.readStruct::<TestStruct>()
@@ -285,7 +285,7 @@ mod tests
 
     let ts: Timespec = ffi!(|scope| {
       let libc: Library = scope.load(LibcPath)?;
-      let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<Timespec>())?;
+      let mem: AllocatedMemory = scope.alloc(size_of::<Timespec>())?;
 
       libc.call("clock_gettime")
         .arg::<i32>(0) // CLOCK_REALTIME

@@ -38,7 +38,7 @@ struct HeavyStack
 pub struct ScopeGuard
 {
   /// Lazily initialized internal state of the scope.
-  inner: UnsafeCell<Option<HeavyStack>>
+  inner: UnsafeCell< Option<HeavyStack> >
 }
 
 impl ScopeGuard
@@ -85,7 +85,7 @@ pub(super) fn currentScopeReadErrno() -> Option<bool>
 /// block, and this is checked by the compiler.
 pub struct Scope<'g>
 {
-  guard: &'g ScopeGuard,
+  guard: &'g ScopeGuard
 }
 
 impl<'g> Scope<'g>
@@ -422,7 +422,7 @@ pub struct FFIScope
   _zygote: ZygoteGuard,
   /// Backing storage for the `'g` lifetime borrowed by [`Scope`],
   /// [`AllocatedMemory<'g>`] and [`Library<'g>`].
-  guard: ScopeGuard,
+  guard: ScopeGuard
 }
 
 impl FFIScope

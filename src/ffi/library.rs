@@ -66,7 +66,7 @@ thread_local!{
 /// See [`crate::ffi::scope::Scope::lastErrno`] — the public entry point.
 pub(super) fn lastErrno() -> Option<i32>
 {
-  LastErrno.with(|e| e.get())
+  LastErrno.get()
 }
 
 /// Resolves the effective errno-capture flag for a call: an explicit
@@ -103,7 +103,7 @@ pub(super) fn sendRawRequest(request: FFIRequest) -> Result<Value, FFIError>
 
     match zygote.call(request) {
       Ok(FFIResponse::Ok(val, errno)) => {
-        LastErrno.with(|e| e.set(errno));
+        LastErrno.set(errno);
         Ok(val)
       }
       Ok(FFIResponse::Err(err)) => Err(err),
@@ -225,7 +225,7 @@ impl<'a, 'g> CallBuilder<'a, 'g>
       lib,
       name: name.to_string(),
       args: Vec::new(),
-      readErrno: None,
+      readErrno: None
     }
   }
 

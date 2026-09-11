@@ -30,7 +30,7 @@ pub(crate) fn resolveRelative(offset: usize) -> usize
 #[doc(hidden)]
 pub fn tagOf(sourceLocation: &str) -> u64
 {
-  let mut hasher: FxHasher = fxhash::FxHasher::default();
+  let mut hasher: FxHasher = FxHasher::default();
   sourceLocation.hash(&mut hasher);
   hasher.finish()
 }
