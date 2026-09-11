@@ -165,10 +165,10 @@
 
 // =================================================================================================
 
-// Используется для примеров.
-
+/// Used for running tests.
 #[cfg(test)]
-mod platform {
+mod platform 
+{
   include!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/platform/mod.rs"));
 }
 

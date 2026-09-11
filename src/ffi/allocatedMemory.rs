@@ -237,7 +237,7 @@ mod tests
     assert_eq!(original, read, "readStruct should return what was written");
   }
 
-  /// Только memset, без последующего read.
+  /// Only memset, without a subsequent read.
   #[test]
   fn memsetOnly() -> ()
   {
