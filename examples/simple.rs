@@ -1,7 +1,7 @@
 mod platform;
+use crate::platform::LibmPath;
 // =================================================================================================
 use chillffi::ffi;
-use crate::platform::LibmPath;
 // =================================================================================================
 
 /// Execute math functions from libm

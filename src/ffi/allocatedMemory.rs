@@ -1,10 +1,10 @@
-use crate::ffi::types::primitive::{FfiArg, Pointer};
-use crate::ffi::types::Value;
-use std::marker::PhantomData;
 use crate::ffi::errors::FFIError;
 use crate::ffi::library::sendRawRequest;
+use crate::ffi::types::primitive::{FfiArg, Pointer};
+use crate::ffi::types::Value;
 use crate::zygote::FFIRequest;
 use bytemuck::{Pod, Zeroable};
+use std::marker::PhantomData;
 // =================================================================================================
 
 /// AllocatedMemory itself is needed when allocating memory on the Rust side;
@@ -164,8 +164,8 @@ mod tests
 {
   use crate::ffi;
   use crate::ffi::allocatedMemory::AllocatedMemory;
-  use bytemuck::{Pod, Zeroable};
   use crate::platform::LibcPath;
+  use bytemuck::{Pod, Zeroable};
   // ===============================================================================================
 
   /// Reading memory via [`AllocatedMemory::read`].

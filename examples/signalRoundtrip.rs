@@ -1,10 +1,10 @@
 mod platform;
+use crate::platform::LibcPath;
 // =================================================================================================
-use chillffi::ffi::types::primitive::{Callback, Pointer};
 use chillffi::callback;
 use chillffi::callvPointer;
 use chillffi::ffi;
-use crate::platform::LibcPath;
+use chillffi::ffi::types::primitive::{Callback, Pointer};
 // =================================================================================================
 
 /// Verify signal()'s returned "previous handler" pointer is real and callable.

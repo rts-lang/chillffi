@@ -1,6 +1,6 @@
-use chillffi::pathResolver::addGlobalSearchPath;
-use crate::ffi::types::primitive::Pointer;
 use chillffi::ffi;
+use chillffi::ffi::types::primitive::Pointer;
+use chillffi::pathResolver::addGlobalSearchPath;
 // =================================================================================================
 
 /// Test library resolution using direct paths, 

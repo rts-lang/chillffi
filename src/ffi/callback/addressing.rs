@@ -1,7 +1,7 @@
-use fxhash::FxHasher;
 use crate::ffi::callback::Type;
-use std::hash::Hasher;
+use fxhash::FxHasher;
 use std::hash::Hash;
+use std::hash::Hasher;
 // =================================================================================================
 
 /// Base load address of the binary containing this very function.
