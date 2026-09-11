@@ -36,7 +36,7 @@ fn main() -> ()
       .result()?;
 
     // Call that address directly, bypassing signal() entirely.
-    callvPointer!(scope, old, 10 as i32)?;
+    callvPointer!(scope, old, 10_i32)?;
 
     Ok(())
   }).expect("signal roundtrip failed");

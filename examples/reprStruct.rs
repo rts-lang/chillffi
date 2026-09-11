@@ -26,7 +26,7 @@ fn clockGettimeManual() -> Result<(i64, i64), FFIError>
     let mem: AllocatedMemory = scope.alloc(16)?;
 
     libc.call("clock_gettime")
-      .arg::<i32>(0 as i32) // CLOCK_REALTIME
+      .arg::<i32>(0) // CLOCK_REALTIME
       .arg(mem.asPointer())
       .void()?;
 
@@ -47,7 +47,7 @@ fn clockGettimeTyped() -> Result<Timespec, FFIError>
     let mem: AllocatedMemory = scope.alloc(std::mem::size_of::<Timespec>())?;
 
     libc.call("clock_gettime")
-      .arg::<i32>(0 as i32) // CLOCK_REALTIME
+      .arg::<i32>(0) // CLOCK_REALTIME
       .arg(mem.asPointer())
       .void()?;
 

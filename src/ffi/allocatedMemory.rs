@@ -183,7 +183,7 @@ mod tests
         .arg::<usize>(8)
         .void()?;
       
-      Ok(mem.read()?)
+      mem.read()
     }).expect("alloc/readMemory/free roundtrip failed");
 
     assert_eq!(bytes, vec![0xABu8; 8]);

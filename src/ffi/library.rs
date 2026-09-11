@@ -440,7 +440,7 @@ mod tests
   {
     let result: f64 = ffi!(|scope| {
       let libm: Library = scope.load(LibmPath)?;
-      Ok( libm.call("sqrt").arg::<f64>(4.0).result()? )
+      libm.call("sqrt").arg::<f64>(4.0).result()
     }).expect("FFI call failed");
 
     assert!((result - 2.0).abs() < f64::EPSILON);
@@ -452,7 +452,7 @@ mod tests
   {
     let result: i32 = ffi!(|scope| {
       let libm: Library = scope.load(LibmPath)?;
-      Ok( libm.call("abs").arg::<i32>(-5).result()? )
+      libm.call("abs").arg::<i32>(-5).result()
     }).expect("FFI call failed");
 
     assert_eq!(result, 5);
