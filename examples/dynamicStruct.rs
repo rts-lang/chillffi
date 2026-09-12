@@ -34,8 +34,9 @@ fn main() -> ()
   }).expect("readDynamicStruct failed");
 
   // Define a nested dynamic struct shape
+  // todo Тут что-то не так. Он че сам себя проверяет? А зачем код выше тогда был.
   let nestedShape: Vec<Type> = vec![
-    Type::Struct(vec![Type::U64, Type::U8, Type::F64]),
+    Type::Struct(Box::new([Type::U64, Type::U8, Type::F64])),
     Type::I8,
     Type::I64,
   ];
