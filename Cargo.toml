@@ -122,10 +122,6 @@ non_camel_case_types = "allow"
 # Usage examples:
 # cargo run --example simple
 
-[[example]]
-name = "simple"
-path = "examples/simple.rs"
-
 # ======================================================================================================================
 
 # Testing:

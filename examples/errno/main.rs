@@ -13,6 +13,8 @@ fn main() -> ()
   testGlobalErrno();
 }
 
+// =================================================================================================
+
 /// Explicit per-call override via `.errno()` — captured regardless of any
 /// scope or global default (both are still off at this point).
 fn testCallErrno() -> ()

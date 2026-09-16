@@ -7,13 +7,15 @@ use chillffi::pathResolver::addGlobalSearchPath;
 /// scope search paths, and global search paths
 fn main() -> ()
 {
-  testRawPath();
-  testScopePath();
-  testGlobalPath();
+  rawPath();
+  scopePath();
+  globalPath();
 }
 
+// =================================================================================================
+
 /// A path with '/' — PathResolver is not involved; it goes directly to dlopen.
-fn testRawPath() -> ()
+fn rawPath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
     let libprint: Library = scope.load("./examples/paths/libprint.so")?;
@@ -27,7 +29,7 @@ fn testRawPath() -> ()
 }
 
 /// Temporary path through scope — resolves only inside this block.
-fn testScopePath() -> ()
+fn scopePath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
     scope.addSearchPath("examples/paths");
@@ -42,7 +44,7 @@ fn testScopePath() -> ()
 }
 
 /// The global path — set once, visible in all subsequent blocks.
-fn testGlobalPath() -> ()
+fn globalPath() -> ()
 {
   addGlobalSearchPath("examples/paths");
 

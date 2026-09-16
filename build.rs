@@ -36,7 +36,7 @@ fn compileDir(dir: &Path) -> ()
     println!("cargo:rerun-if-changed={}", path.display());
 
     let stem: &str = path.file_stem().unwrap().to_str().unwrap();
-    let output: PathBuf = path.with_file_name(format!("lib{}.so", stem));
+    let output: PathBuf = path.with_file_name(format!("lib{}.so", stem)); // todo Оно работает, но лучше выделить в .dylib
 
     if isFresh(&path, &output) { continue; }
 
