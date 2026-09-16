@@ -67,6 +67,8 @@
 //! ```
 //!
 //! For more detailed examples, see the `examples` folder.
+//! 
+//! The tests there are divided by features, and inside there are different usage variations.
 //!
 //! You can also run them via `cargo run --example <name>`.
 //!

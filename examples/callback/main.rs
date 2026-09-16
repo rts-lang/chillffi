@@ -10,11 +10,8 @@ use chillffi::ffi::types::primitive::Pointer;
 use std::cmp::Ordering;
 // =================================================================================================
 
-/// Feature: [`callback!`] — registering a Rust closure so C can call it as
-/// a function pointer (e.g. a `qsort` comparator). Capture is automatic,
-/// exactly like an ordinary closure — no explicit `[]` list, no
-/// `serde_closure`. The catch: captured variables must be `Copy + Send`,
-/// since the closure's state crosses the fork as a raw bit-copy.
+/// `callback!` — Rust closure as a C function pointer.
+/// Capture is automatic; captured values must be `Copy + Send`.
 fn main() -> ()
 {
   noCaptures();
@@ -23,7 +20,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// Baseline: a comparator with nothing captured from the environment at all.
+/// Comparator with no captures.
 fn noCaptures() -> ()
 {
   let sorted: Vec<i32> = ffi!(|scope| {
@@ -57,9 +54,7 @@ fn noCaptures() -> ()
   println!("ok: no-capture comparator -> {sorted:?}");
 }
 
-/// Two unrelated captured variables of *different* types (`i32` and
-/// `bool`), no explicit capture list for either — both actually travel
-/// into the clone that runs the comparator, not just "visible by accident".
+/// Capture of two variables of different types (`i32` and `bool`).
 fn multipleCapturedVariables() -> ()
 {
   let bias: i32 = 3; // Shifts every value before comparing

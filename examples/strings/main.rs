@@ -5,9 +5,7 @@ use crate::platform::LibcPath;
 use chillffi::ffi;
 // =================================================================================================
 
-/// Feature: string arguments. `.arg(...)` accepts three different Rust
-/// string-ish types, and each one crosses the C ABI boundary differently —
-/// this is about *that* difference, not about strings in general.
+/// Three string argument kinds: String, CString, RawString.
 fn main() -> ()
 {
   string();
@@ -17,9 +15,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// `String`/`&str` → [`Value::String`] → *two* C arguments automatically:
-/// pointer, then length. `strnlen(const char *s, size_t maxlen)` is exactly
-/// that shape, so a single `.arg("...")` fills both parameters by itself.
+/// `String`/`&str` → pointer + length.
 fn string() -> ()
 {
   let result: usize = ffi!(|scope| {
@@ -31,9 +27,7 @@ fn string() -> ()
   println!("ok: strnlen(\"hello world\") = {result}  (auto-split into 2 C args: pointer + len)");
 }
 
-/// `CString`/`&CStr` (e.g. a `c"..."` literal) → [`Value::CString`] → a
-/// single C argument: a `\0`-terminated pointer. This is what a plain
-/// `const char *` parameter expects.
+/// `CString`/`&CStr` → one `\0`-terminated pointer.
 fn cString() -> ()
 {
   let result: usize = ffi!(|scope| {
@@ -45,9 +39,7 @@ fn cString() -> ()
   println!("ok: strlen(c\"chillffi\") = {result}  (1 C arg: pointer)");
 }
 
-/// `Vec<u8>`/`&[u8]` → [`Value::RawString`] → a single C argument: a raw
-/// pointer, with *no* `\0` guarantee and no length pairing. Safe here only
-/// because the byte vector supplies its own terminator by hand.
+/// `Vec<u8>`/`&[u8]` → raw pointer.
 fn rawString() -> ()
 {
   let result: i32 = ffi!(|scope| {

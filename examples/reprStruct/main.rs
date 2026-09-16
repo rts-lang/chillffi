@@ -7,19 +7,13 @@ use chillffi::ffi;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;
 // =================================================================================================
 
-/// struct timespec { time_t tv_sec; long tv_nsec; } — 16 bytes on x86_64 Linux.
-/// `#[repr(C)]` is mandatory — otherwise Rust is free to reorder the fields.
-/// `derive(Pod)` checks at compile time that there is no padding: if there
-/// were, for example, i32+i64 without an explicit `_pad`, bytemuck would
-/// refuse to compile rather than silently letting you read garbage from the gap.
+/// `timespec` as `#[repr(C)]` + `Pod`. Without `repr(C)` fields may be reordered;
+/// `Pod` catches padding at compile time.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable, Debug, PartialEq)]
 struct Timespec { secs: i64, nanos: i64 }
 
-/// Feature: [`AllocatedMemory::readStruct`]/[`writeStruct`] — a
-/// compile-time-typed, `#[repr(C)]` view over a raw buffer. Compare with
-/// `examples/dynamicStruct`, which describes the exact same kind of shape
-/// at runtime instead, for when no Rust type exists to name.
+/// `readStruct` / `writeStruct` — typed access to a buffer via `#[repr(C)]`.
 fn main() -> ()
 {
   manualByteParsing();
@@ -29,9 +23,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// BEFORE: what every example before this one did — slice indices and
-/// `from_ne_bytes` by hand. Kept here only as the baseline the next test
-/// improves on.
+/// Manual parse with slices and `from_ne_bytes`.
 fn manualByteParsing() -> ()
 {
   let (secs, nanos): (i64, i64) = ffi!(|scope| {
@@ -49,8 +41,7 @@ fn manualByteParsing() -> ()
   println!("manual:  clock_gettime = {secs}.{nanos:09}");
 }
 
-/// AFTER: `readStruct` removes all manual parsing — size and field layout
-/// are checked by the type instead of by hand-calculated slices.
+/// Same thing via `readStruct`.
 fn readStructRemovesManualParsing() -> ()
 {
   let ts: Timespec = ffi!(|scope| {
@@ -65,9 +56,7 @@ fn readStructRemovesManualParsing() -> ()
   println!("typed:   clock_gettime = {}.{:09}", ts.secs, ts.nanos);
 }
 
-/// `writeStruct` is the write-side mirror — fills the buffer directly from
-/// a Rust value, entirely on our side, no C call needed to prove the
-/// roundtrip is byte-exact.
+/// `writeStruct` — write a Rust value into the buffer.
 fn writeThenReadStructRoundtrip() -> ()
 {
   let (original, readBack): (Timespec, Timespec) = ffi!(|scope| {

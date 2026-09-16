@@ -7,8 +7,7 @@ use chillffi::ffi::types::primitive::Pointer;
 use chillffi::pathResolver::addGlobalSearchPath;
 // =================================================================================================
 
-/// Test library resolution using direct paths, 
-/// scope search paths, and global search paths
+/// Library resolution: direct path, scope search path, and global search path.
 fn main() -> ()
 {
   rawPath();
@@ -18,7 +17,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// A path with '/' — PathResolver is not involved; it goes directly to dlopen.
+/// Path with '/' — goes straight to dlopen, PathResolver is skipped.
 fn rawPath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
@@ -32,7 +31,7 @@ fn rawPath() -> ()
   println!("ok: raw path");
 }
 
-/// Temporary path through scope — resolves only inside this block.
+/// Scope search path — only visible inside this block.
 fn scopePath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
@@ -47,7 +46,7 @@ fn scopePath() -> ()
   println!("ok: scope path");
 }
 
-/// The global path — set once, visible in all subsequent blocks.
+/// Global search path — visible in all later blocks.
 fn globalPath() -> ()
 {
   addGlobalSearchPath("examples/paths");

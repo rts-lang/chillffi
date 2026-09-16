@@ -7,10 +7,7 @@ use chillffi::ffi;
 use chillffi::ffi::errors::FFIError;
 // =================================================================================================
 
-/// Feature: crash isolation — the headline guarantee of this crate. A
-/// crash inside an isolated clone must surface as `Err`, never unwind or
-/// take down the process that ran this example, and must never affect any
-/// `ffi!` block that comes after it.
+/// Crash isolation: a crash inside the clone must not take down the main process.
 fn main() -> ()
 {
   segfaultIsContained();
@@ -20,8 +17,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// A real SIGSEGV inside the clone. If isolation didn't work, this
-/// process — the one printing these lines — would die with it.
+/// SIGSEGV inside the clone → `Err`, main process stays up.
 fn segfaultIsContained() -> ()
 {
   let result: Result<(), FFIError> = ffi!(|scope| {
@@ -35,7 +31,7 @@ fn segfaultIsContained() -> ()
   println!("ok: segfault contained — {err}");
 }
 
-/// Same guarantee for `abort()` (SIGABRT) — a different signal, same boundary.
+/// Same for `abort()` (SIGABRT).
 fn abortIsContained() -> ()
 {
   let result: Result<(), FFIError> = ffi!(|scope| {
@@ -49,10 +45,7 @@ fn abortIsContained() -> ()
   println!("ok: abort() contained — {err}");
 }
 
-/// The whole point: after two crashed clones, a completely unrelated
-/// `ffi!` block still works. Each `ffi!` forks its own fresh clone from
-/// the always-alive main zygote — a crashed *clone* never touches the main
-/// zygote itself, so no supervisor restart or delay is even needed here.
+/// After two crashed clones, a normal `ffi!` block still works.
 fn runtimeSurvivesAfterCrash() -> ()
 {
   let result: f64 = ffi!(|scope| {

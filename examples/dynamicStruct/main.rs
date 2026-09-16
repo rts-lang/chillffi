@@ -10,12 +10,7 @@ use chillffi::ffi::types::primitive::{Arg, DynamicList, Pointer};
 use chillffi::ffi::types::Type;
 // =================================================================================================
 
-/// Feature: dynamically-typed C structs — [`Scope::allocStruct`],
-/// [`Scope::readDynamicStruct`], [`Scope::writeDynamicStruct`]. The shape
-/// is an ordinary runtime `Vec<Type>`, so it works for structs that only
-/// ever existed as C source, with no matching `#[repr(C)]` Rust type to
-/// name. Compare with `examples/reprStruct`, which covers the same buffer
-/// shape when a Rust type *does* exist.
+/// Dynamic structs: layout is a runtime `Vec<Type>`, no Rust type required.
 fn main() -> ()
 {
   readDynamicStruct();
@@ -26,8 +21,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// Reads a struct C already wrote (`clock_gettime`'s out-parameter) back
-/// out using a runtime-described shape instead of `readStruct::<T>()`.
+/// Read a `clock_gettime` out-parameter via a runtime shape.
 fn readDynamicStruct() -> ()
 {
   let (secs, nanos): (i64, i64) = ffi!(|scope| {
@@ -48,10 +42,7 @@ fn readDynamicStruct() -> ()
 /// struct Data { int size; int *values; };
 /// void process(struct Data *data);
 /// ```
-/// The struct exists only on the C side. Its layout is described at
-/// runtime, allocated with ABI-correct size/padding via `allocStruct`, and
-/// filled in field-by-field via `writeDynamicStruct` — the separately
-/// allocated `values` array is passed through the struct's pointer field.
+/// Runtime layout, `allocStruct` + `writeDynamicStruct`.
 fn structAsCallParameter() -> ()
 {
   let dataShape: Vec<Type> = vec![Type::I32, Type::Pointer];
@@ -86,9 +77,7 @@ fn structAsCallParameter() -> ()
 /// struct Data { int size; int *values; };
 /// struct Data *process(void);
 /// ```
-/// The returned struct is read via its runtime shape; the pointed-to array
-/// is read separately using the size stored in the struct's own `size`
-/// field — a pointer field never carries its own length.
+/// Read the returned struct; the array is read separately using the `size` field.
 fn structAsCallResult() -> ()
 {
   let values: Vec<i32> = ffi!(|scope| {
@@ -119,17 +108,9 @@ fn structAsCallResult() -> ()
   println!("ok: dynamic struct as a call result -> {values:?}");
 }
 
-/// `Type::Struct(nested)` fields ARE supported by the ABI layout engine —
-/// `allocStruct` correctly resolves the padded, ABI-aware size for a shape
-/// that nests one struct inside another, exactly like `struct_offsets`
-/// would for a real nested `#[repr(C)]` type.
-///
-/// What is *not* yet possible through the public API: reading a nested
-/// field back out. `DynamicList::get::<T>` requires `T: FfiPrimitive`,
-/// which only scalar types implement — there's no way to ask for the
-/// nested field itself as another `DynamicList`. This is a real, open gap
-/// in the API, not a demonstrated feature; left here as an honest marker
-/// instead of a fake round-trip.
+/// Nested `Type::Struct` is supported by the layout engine (`allocStruct`
+/// computes size with padding). Reading a nested field via the public API
+/// is not possible yet — `get::<T>` only accepts scalars.
 fn nestedStructShapeIsSized() -> ()
 {
   let shape: Vec<Type> = vec![

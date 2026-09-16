@@ -7,10 +7,7 @@ use chillffi::ffi::allocatedMemory::AllocatedMemory;
 use chillffi::ffi::errors::FFIError;
 // =================================================================================================
 
-/// Feature: raw [`AllocatedMemory`] — `Scope::alloc`/`allocAligned` plus
-/// manual byte read/write. For a typed, struct-shaped view of the same
-/// buffer see `examples/reprStruct`; for a runtime-typed one see
-/// `examples/dynamicStruct`.
+/// Raw `AllocatedMemory`: `alloc` / `allocAligned` and manual byte read/write.
 fn main() -> ()
 {
   allocAligned();
@@ -19,10 +16,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// A plain `alloc()`'s `malloc` gives no alignment guarantee beyond what
-/// the allocator happens to do. SIMD types like `__m128` need 16/32/64-byte
-/// alignment — this is exactly the case `allocAligned` (`posix_memalign`
-/// under the hood) exists for.
+/// `allocAligned` when you need a specific alignment (posix_memalign).
 fn allocAligned() -> ()
 {
   let addr: usize = ffi!(|scope| {
@@ -34,9 +28,7 @@ fn allocAligned() -> ()
   println!("ok: allocAligned(64, 16) -> 0x{addr:X}, % 16 == 0");
 }
 
-/// `pipe()` writes two file descriptors into an out-parameter — exactly
-/// the pattern `AllocatedMemory` exists for: allocate a buffer, hand its
-/// address to C as a pointer, read the bytes C wrote back afterward.
+/// `pipe()` writes two fds into an out-parameter — typical use of AllocatedMemory.
 fn pipeRoundtrip() -> ()
 {
   let received: Vec<u8> = ffi!(|scope| {

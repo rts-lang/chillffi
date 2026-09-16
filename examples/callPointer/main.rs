@@ -8,10 +8,7 @@ use chillffi::ffi;
 use chillffi::ffi::types::primitive::{Callback, Pointer};
 // =================================================================================================
 
-/// Feature: [`Scope::callPointer`]/[`callvPointer!`] — calling a raw
-/// function pointer directly, with no `dlopen`/`dlsym` involved, because
-/// the address is already known. Verified here by round-tripping through
-/// `signal()`, which both takes and returns a function pointer.
+/// `callPointer` / `callvPointer!` — call a known address, no dlopen involved.
 fn main() -> ()
 {
   callvPointerOnSignalReturnedHandler();
@@ -19,10 +16,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// `signal()` returns the *previous* handler as a raw address. Installing
-/// our own Rust callback first, then asking `signal()` to swap it back to
-/// `SIG_DFL`, gets that exact address back — a real, known-good pointer to
-/// call through `callvPointer!`, bypassing `signal()`/`dlsym` entirely.
+/// Get the previous handler address from `signal()`, then call it directly.
 fn callvPointerOnSignalReturnedHandler() -> ()
 {
   ffi!(|scope| {

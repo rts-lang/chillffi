@@ -7,9 +7,7 @@ use chillffi::ffi;
 use chillffi::ffi::errors::FFIError;
 // =================================================================================================
 
-/// Feature: [`Library`] itself — loading, calling, reading back its
-/// resolved path, unloading (explicit and automatic), and the two ways
-/// loading/calling can fail.
+/// `Library`: load, path, unload, and load/call failures.
 fn main() -> ()
 {
   loadCallAndPath();
@@ -21,10 +19,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// `scope.load` doesn't touch the filesystem yet — it just resolves and
-/// remembers a path string. `Library::path()` reports that resolved string,
-/// so this also doubles as a sanity check that a bare name (no search paths
-/// registered) resolves to itself.
+/// `load` only stores the path; `path()` returns it as-is.
 fn loadCallAndPath() -> ()
 {
   let (path, result): (String, f64) = ffi!(|scope| {
@@ -39,8 +34,7 @@ fn loadCallAndPath() -> ()
   println!("ok: loaded '{path}', sqrt(16.0) = {result}");
 }
 
-/// `Library::unload` takes `self` by value — the compiler, not a runtime
-/// check, is what prevents using the handle afterward.
+/// `unload` takes `self` — the handle cannot be used afterward.
 fn explicitUnload() -> ()
 {
   ffi!(|scope| {
@@ -55,8 +49,7 @@ fn explicitUnload() -> ()
   println!("ok: explicit unload()");
 }
 
-/// Same guarantee without calling `unload()` — plain scope-exit `Drop`
-/// unregisters the library exactly the same way.
+/// Without an explicit `unload`, the library is dropped when the scope ends.
 fn automaticDropOnScopeExit() -> ()
 {
   ffi!(|scope| {
@@ -70,9 +63,7 @@ fn automaticDropOnScopeExit() -> ()
   println!("ok: automatic drop on scope exit");
 }
 
-/// `scope.load` succeeds for *any* string — resolution is lazy. The actual
-/// `dlopen` only happens inside the clone on the first real call, which is
-/// where a bad path is finally reported.
+/// Bad path: `load` succeeds, the error arrives on the first real call.
 fn libraryLoadFailed() -> ()
 {
   let err: FFIError = ffi!(|scope| {
@@ -84,7 +75,7 @@ fn libraryLoadFailed() -> ()
   println!("ok: LibraryLoadFailed — {err}");
 }
 
-/// The library itself loads fine — it's the symbol lookup inside it that fails.
+/// Library loads fine, symbol is missing.
 fn symbolNotFound() -> ()
 {
   let err: FFIError = ffi!(|scope| {

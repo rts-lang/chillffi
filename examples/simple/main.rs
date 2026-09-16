@@ -5,8 +5,7 @@ use crate::platform::LibmPath;
 use chillffi::ffi;
 // =================================================================================================
 
-/// Feature: the `ffi!` macro itself — the smallest possible block, no
-/// scope-level features (paths, errno, memory, structs) involved at all.
+/// Minimal `ffi!` block: one library, one call.
 fn main() -> ()
 {
   sqrt();
@@ -15,7 +14,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// One library, one call, one typed result.
+/// sqrt from libm.
 fn sqrt() -> ()
 {
   let result: f64 = ffi!(|scope| {
@@ -27,8 +26,7 @@ fn sqrt() -> ()
   println!("ok: sqrt(4.0) = {result}");
 }
 
-/// A second, independent `ffi!` block — a fresh clone, a fresh scope. Proves
-/// a block doesn't leak into or depend on the one before it.
+/// Second independent `ffi!` block — a separate clone.
 fn multipleCallsSameScope() -> ()
 {
   let result: i32 = ffi!(|scope| {

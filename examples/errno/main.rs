@@ -7,9 +7,7 @@ use chillffi::ffi;
 use chillffi::ffi::scope::Scope;
 // =================================================================================================
 
-/// Test errno capture using a per-call override, a scope-level default,
-/// and a global default — mirroring `examples/paths/main.rs`'s raw/scope/
-/// global levels for path resolution. Most specific wins: call > scope > global.
+/// Errno capture: per-call, per-scope, and global. Priority: call > scope > global.
 fn main() -> ()
 {
   testCallErrno();
@@ -19,8 +17,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// Explicit per-call override via `.errno()` — captured regardless of any
-/// scope or global default (both are still off at this point).
+/// `.errno()` on a single call.
 fn testCallErrno() -> ()
 {
   let errno: Option<i32> = ffi!(|scope| {
@@ -41,8 +38,7 @@ fn testCallErrno() -> ()
   println!("ok: call-level errno");
 }
 
-/// Scope-level default via `Scope::setReadErrno(true)` — every call made
-/// through this scope captures errno without needing its own `.errno()`.
+/// `setReadErrno(true)` on the scope — every call in the block captures errno.
 fn testScopeErrno() -> ()
 {
   let errno: Option<i32> = ffi!(|scope| {
@@ -63,8 +59,7 @@ fn testScopeErrno() -> ()
   println!("ok: scope-level errno");
 }
 
-/// Global default via `setGlobalReadErrno(true)` — set once, applies to
-/// every call in every scope from here on, unless a scope or call overrides it.
+/// Global `setGlobalReadErrno(true)`.
 fn testGlobalErrno() -> ()
 {
   setGlobalReadErrno(true);

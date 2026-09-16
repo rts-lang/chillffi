@@ -13,10 +13,7 @@ use chillffi::ffi::library::Library;
 use chillffi::ffi::scope::{FFIScope, Scope};
 // =================================================================================================
 
-/// Feature: [`FFIScope::enter`] — the non-macro entry point. Mirrors what
-/// `ffi!` does, but gives manual control over the scope's lifetime, for
-/// when block boundaries aren't known at compile time (a JIT, an
-/// interpreter, code generated from another language).
+/// `FFIScope::enter` — same as `ffi!`, but you control the scope lifetime yourself.
 fn main() -> ()
 {
   retainedScopeAcrossMultipleOperations();
@@ -24,8 +21,7 @@ fn main() -> ()
 
 // =================================================================================================
 
-/// One `FFIScope` (one zygote clone) reused across several operations —
-/// `stat()` via libc, same as the `ffi!` version, just held open by hand.
+/// One scope reused across several operations.
 fn retainedScopeAcrossMultipleOperations() -> ()
 {
   let size: i64 = (|| -> Result<i64, FFIError> {
