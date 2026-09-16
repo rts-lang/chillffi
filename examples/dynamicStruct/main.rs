@@ -1,6 +1,7 @@
 #[path = "../platform/mod.rs"]
 mod platform;
 use crate::platform::LibcPath;
+use crate::platform::platformExt;
 // =================================================================================================
 use chillffi::ffi;
 use chillffi::ffi::allocatedMemory::AllocatedMemory;

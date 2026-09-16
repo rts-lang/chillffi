@@ -66,7 +66,7 @@ mod tests
   use super::*;
   use std::env::temp_dir;
   use std::fs::File;
-  use crate::platformExt;
+  use crate::platform::platformExt;
   // ===============================================================================================
 
   /// Checks that paths containing a slash are ignored.

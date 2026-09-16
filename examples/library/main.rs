@@ -1,6 +1,7 @@
 #[path = "../platform/mod.rs"]
 mod platform;
 use crate::platform::LibmPath;
+use crate::platform::platformExt;
 // =================================================================================================
 use chillffi::ffi;
 use chillffi::ffi::errors::FFIError;

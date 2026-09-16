@@ -1,5 +1,6 @@
 #[path = "../platform/mod.rs"]
 mod platform;
+use crate::platform::platformExt;
 // =================================================================================================
 use chillffi::ffi;
 use chillffi::ffi::types::primitive::Pointer;

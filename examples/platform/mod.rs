@@ -5,8 +5,11 @@
 // =================================================================================================
 
 #[cfg(target_os = "linux")]
+#[allow(unused_imports)]
 pub use linux::*;
+
 #[cfg(target_os = "macos")]
+#[allow(unused_imports)]
 pub use macos::*;
 
 // =================================================================================================
@@ -15,7 +18,7 @@ pub use macos::*;
 /// 
 /// todo Кстати в теории он мог быть публичным хелпером,
 ///  потому что такое может быть удобно при мульти-платформе в коде.
-#[macro_export]
+#[allow(unused_macros)]
 macro_rules! platformExt
 {
   ($path:literal) => {{
@@ -25,6 +28,8 @@ macro_rules! platformExt
     { concat!($path, ".so") }
   }};
 }
+#[allow(unused_imports)]
+pub(crate) use platformExt;
 
 // =================================================================================================
 
