@@ -8,7 +8,7 @@ use crate::ffi::callback::Envelope;
 use crate::ffi::callback::ErasedCallable;
 use crate::ffi::types::primitive::{Callback, Pointer};
 use crate::platform::LibcPath;
-// =================================================================================================
+// ===============================================================================================
 
 /// Baseline: a closure with *no* captures at all round-trips through a
 /// real registration, over real IPC, into a real clone, and back — the
@@ -89,7 +89,7 @@ fn externalCaptureReachesTheClone() -> ()
   assert_eq!(sorted, vec![1, 2, 5, 9]);
 }
 
-// =================================================================================================
+// ===============================================================================================
 
 /// Requesting the wrong Args/Output must fail cleanly — checked by the
 /// target function itself before any state is decoded.
@@ -153,4 +153,50 @@ fn siteTagMismatchIsCaught() -> ()
   }).expect("ffi! failed");
 }
 
-// =================================================================================================
+// ===============================================================================================
+
+/// Everything above captures a bare scalar (`i32`). A `#[derive(Copy, Clone)]`
+/// struct is a different code path through the bit-copy serializer — this
+/// closes that gap without needing a new C fixture: same `qsort`, same
+/// registration macro, just a richer captured type.
+#[test]
+fn copyStructCaptureReachesTheClone() -> ()
+{
+  #[derive(Copy, Clone)]
+  struct Bias { value: i32 }
+
+  let bias: Bias = Bias { value: 100 };
+
+  let sorted: Vec<i32> = ffi!(|scope| {
+    let libc: Library = scope.load(LibcPath)?;
+    let mem: AllocatedMemory = scope.alloc(3 * 4)?;
+
+    let data: [i32; 3] = [30, 10, 20];
+    let raw: &[u8] = unsafe{ std::slice::from_raw_parts(data.as_ptr() as *const u8, 12) };
+    mem.write(raw)?;
+
+    // `bias` isn't listed anywhere — just used directly below, same as a
+    // bare scalar capture, but now via a struct field access.
+    let compar: Callback = callback!(scope, |a: Pointer, b: Pointer| -> i32 {
+      let av: i32 = unsafe{ *(a.0 as *const i32) } - bias.value;
+      let bv: i32 = unsafe{ *(b.0 as *const i32) } - bias.value;
+      av.cmp(&bv) as i32
+    });
+
+    libc.call("qsort")
+      .arg(mem.asPointer())
+      .arg::<usize>(3)
+      .arg::<usize>(4)
+      .arg(compar)
+      .void()?;
+
+    let bytes: Vec<u8> = mem.read()?;
+    Ok(bytes.chunks_exact(4)
+      .map(|b| i32::from_ne_bytes(b.try_into().unwrap()))
+      .collect())
+  }).expect("qsort with a struct capture failed");
+
+  assert_eq!(sorted, vec![10, 20, 30]);
+}
+
+// ===============================================================================================

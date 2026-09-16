@@ -91,7 +91,7 @@ mod tests
   fn findsExistingFile() -> ()
   {
     let dir: PathBuf = temp_dir();
-    let fileName: &str = "chillffiTestResolve.so";
+    let fileName: &str = platformExt!("chillffiTestResolve");
     File::create(dir.join(fileName)).unwrap();
 
     let mut resolver: PathResolver = PathResolver::default();
@@ -108,7 +108,7 @@ mod tests
   fn globalRoundtrip() -> ()
   {
     let dir: PathBuf = temp_dir();
-    let fileName: &str = "chillffiTestGlobal.so";
+    let fileName: &str = platformExt!("chillffiTestGlobal");
     File::create(dir.join(fileName)).unwrap();
 
     addGlobalSearchPath(&dir);

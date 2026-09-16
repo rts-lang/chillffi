@@ -28,14 +28,14 @@ fn noCaptures() -> ()
     let mem: AllocatedMemory = scope.alloc(5 * 4)?;
 
     let data: [i32; 5] = [3, 1, 4, 1, 5];
-    let raw: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
+    let raw: &[u8] = unsafe{ std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
     mem.write(raw)?;
 
     // Direct dereferencing is correct: the closure runs inside the clone
     // (where the data resides), not in the parent process.
     let compar: Callback = callback!(scope, |a: Pointer, b: Pointer| -> i32 {
-      let av: i32 = unsafe { *(a.0 as *const i32) };
-      let bv: i32 = unsafe { *(b.0 as *const i32) };
+      let av: i32 = unsafe{ *(a.0 as *const i32) };
+      let bv: i32 = unsafe{ *(b.0 as *const i32) };
       av.cmp(&bv) as i32
     });
 
@@ -65,12 +65,12 @@ fn multipleCapturedVariables() -> ()
     let mem: AllocatedMemory = scope.alloc(5 * 4)?;
 
     let data: [i32; 5] = [3, 1, 4, 1, 5];
-    let raw: &[u8] = unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
+    let raw: &[u8] = unsafe{ std::slice::from_raw_parts(data.as_ptr() as *const u8, 20) };
     mem.write(raw)?;
 
     let compar: Callback = callback!(scope, |a: Pointer, b: Pointer| -> i32 {
-      let av: i32 = unsafe { *(a.0 as *const i32) };
-      let bv: i32 = unsafe { *(b.0 as *const i32) };
+      let av: i32 = unsafe{ *(a.0 as *const i32) };
+      let bv: i32 = unsafe{ *(b.0 as *const i32) };
 
       let cmp: Ordering = if descending {
         (bv + bias).cmp(&(av + bias))
