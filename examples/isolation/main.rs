@@ -25,7 +25,7 @@ fn segfaultIsContained() -> ()
 {
   let result: Result<(), FFIError> = ffi!(|scope| {
     scope.addSearchPath("examples/isolation");
-    let lib: Library = scope.load("libcrash.so")?;
+    let lib: Library = scope.load(platformExt!("libcrash"))?;
     lib.call("triggerSegfault").void()
   });
 
@@ -39,7 +39,7 @@ fn abortIsContained() -> ()
 {
   let result: Result<(), FFIError> = ffi!(|scope| {
     scope.addSearchPath("examples/isolation");
-    let lib: Library = scope.load("libcrash.so")?;
+    let lib: Library = scope.load(platformExt!("libcrash"))?;
     lib.call("triggerAbort").void()
   });
 

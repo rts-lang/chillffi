@@ -75,7 +75,7 @@ fn automaticDropOnScopeExit() -> ()
 fn libraryLoadFailed() -> ()
 {
   let err: FFIError = ffi!(|scope| {
-    let bogus: Library = scope.load("libTotallyDoesNotExist9000.so")?;
+    let bogus: Library = scope.load(platformExt!("libTotallyDoesNotExist9000"))?;
     bogus.call("whatever").void()
   }).expect_err("loading a nonexistent library should fail");
 

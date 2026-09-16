@@ -58,7 +58,7 @@ fn structAsCallParameter() -> ()
 
   let sum: i32 = ffi!(|scope| {
     scope.addSearchPath("examples/dynamicStruct");
-    let lib: Library = scope.load("libparameter.so")?;
+    let lib: Library = scope.load(platformExt!("libparameter"))?;
 
     let valuesMem: AllocatedMemory = scope.alloc(values.len() * size_of::<i32>())?;
     let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_ne_bytes()).collect();
@@ -92,7 +92,7 @@ fn structAsCallResult() -> ()
 {
   let values: Vec<i32> = ffi!(|scope| {
     scope.addSearchPath("examples/dynamicStruct");
-    let lib: Library = scope.load("libresult.so")?;
+    let lib: Library = scope.load(platformExt!("libresult"))?;
 
     let dataPtr: Pointer = lib.call("process").result()?;
 

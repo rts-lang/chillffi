@@ -66,6 +66,7 @@ mod tests
   use super::*;
   use std::env::temp_dir;
   use std::fs::File;
+  use crate::platformExt;
   // ===============================================================================================
 
   /// Checks that paths containing a slash are ignored.
@@ -73,7 +74,7 @@ mod tests
   fn ignoresPathWithSlash() -> ()
   {
     let resolver: PathResolver = PathResolver::default();
-    assert_eq!(resolver.resolve("foo/bar.so"), None);
+    assert_eq!(resolver.resolve(platformExt!("foo/bar")), None);
   }
 
   /// Checks that None is returned when the file is not found.
@@ -82,7 +83,7 @@ mod tests
   {
     let mut resolver: PathResolver = PathResolver::default();
     resolver.addPath("/nonexistent/dir");
-    assert_eq!(resolver.resolve("libNope.so"), None);
+    assert_eq!(resolver.resolve(platformExt!("libNope")), None);
   }
 
   /// Checks finding an existing file in the registered directories.

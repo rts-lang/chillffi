@@ -1,3 +1,6 @@
+#[path = "../platform/mod.rs"]
+mod platform;
+// =================================================================================================
 use chillffi::errnoPolicy::setGlobalReadErrno;
 use chillffi::ffi;
 use chillffi::ffi::scope::Scope;
@@ -21,7 +24,7 @@ fn testCallErrno() -> ()
 {
   let errno: Option<i32> = ffi!(|scope| {
     scope.addSearchPath("examples/errno");
-    let liberrno: Library = scope.load("liberrno.so")?;
+    let liberrno: Library = scope.load(platformExt!("liberrno"))?;
 
     let result: i32 =
       liberrno.call("failWithErrno")
@@ -44,7 +47,7 @@ fn testScopeErrno() -> ()
   let errno: Option<i32> = ffi!(|scope| {
     scope.addSearchPath("examples/errno");
     scope.setReadErrno(true);
-    let liberrno: Library = scope.load("liberrno.so")?;
+    let liberrno: Library = scope.load(platformExt!("liberrno"))?;
 
     let result: i32 =
       liberrno.call("failWithErrno")
@@ -67,7 +70,7 @@ fn testGlobalErrno() -> ()
 
   let errno: Option<i32> = ffi!(|scope| {
     scope.addSearchPath("examples/errno");
-    let liberrno: Library = scope.load("liberrno.so")?;
+    let liberrno: Library = scope.load(platformExt!("liberrno"))?;
 
     let result: i32 =
       liberrno.call("failWithErrno")

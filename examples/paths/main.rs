@@ -1,3 +1,6 @@
+#[path = "../platform/mod.rs"]
+mod platform;
+// =================================================================================================
 use chillffi::ffi;
 use chillffi::ffi::types::primitive::Pointer;
 use chillffi::pathResolver::addGlobalSearchPath;
@@ -18,7 +21,7 @@ fn main() -> ()
 fn rawPath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
-    let libprint: Library = scope.load("./examples/paths/libprint.so")?;
+    let libprint: Library = scope.load(platformExt!("./examples/paths/libprint"))?;
     libprint.call("print")
       .arg("raw path\n")
       .result()
@@ -33,7 +36,7 @@ fn scopePath() -> ()
 {
   let result: Pointer = ffi!(|scope| {
     scope.addSearchPath("examples/paths");
-    let libprint: Library = scope.load("libprint.so")?;
+    let libprint: Library = scope.load(platformExt!("libprint"))?;
     libprint.call("print")
       .arg("scope path\n")
       .result()
@@ -49,7 +52,7 @@ fn globalPath() -> ()
   addGlobalSearchPath("examples/paths");
 
   let result: Pointer = ffi!(|scope| {
-    let libprint: Library = scope.load("libprint.so")?;
+    let libprint: Library = scope.load(platformExt!("libprint"))?;
     libprint.call("print")
       .arg("global path\n")
       .result()
