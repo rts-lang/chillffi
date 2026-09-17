@@ -6,12 +6,12 @@
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
-pub(crate) use self::unix::*;
+pub use self::unix::*;
 
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
-pub(crate) use self::windows::*;
+pub use self::windows::*;
 
 #[cfg(not(any(unix, windows)))]
 compile_error!("chillffi supports Unix-like OSes and Windows only");
@@ -19,9 +19,9 @@ compile_error!("chillffi supports Unix-like OSes and Windows only");
 // =================================================================================================
 
 /// Process id, normalized to what `std::process::Child::id` already returns.
-pub(crate) type ProcessId = u32;
+pub type ProcessId = u32;
 
 /// posix_memalign / _aligned_malloc both require at least a pointer's worth.
-pub(crate) const MinAlignment: usize = size_of::<*mut core::ffi::c_void>();
+pub const MinAlignment: usize = size_of::<*mut core::ffi::c_void>();
 
 // =================================================================================================

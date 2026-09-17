@@ -36,10 +36,10 @@ unsafe extern "C"
 // =================================================================================================
 
 /// No-op: Windows has neither SIGCHLD nor zombie processes.
-pub(crate) const fn ignoreChildExits() -> () {}
+pub const fn ignoreChildExits() -> () {}
 
 /// A clone is a crash domain, not a cooperating peer — kill it outright.
-pub(crate) fn killProcess(pid: ProcessId) -> ()
+pub fn killProcess(pid: ProcessId) -> ()
 {
   let process: Handle = unsafe{ OpenProcess(ProcessTerminate, 0, pid) };
   if process.is_null() { return; }
@@ -49,7 +49,7 @@ pub(crate) fn killProcess(pid: ProcessId) -> ()
 }
 
 /// Blocks until the process terminates.
-pub(crate) fn waitProcess(pid: ProcessId) -> ()
+pub fn waitProcess(pid: ProcessId) -> ()
 {
   let process: Handle = unsafe{ OpenProcess(Synchronize, 0, pid) };
   if process.is_null() { return; }
@@ -61,7 +61,7 @@ pub(crate) fn waitProcess(pid: ProcessId) -> ()
 /// Disables Windows Error Reporting for the calling process. Called once at
 /// clone startup — a crash must kill the clone immediately, not open a WER
 /// dialog the Runtime would sit blocked waiting on.
-pub(crate) fn silenceCrashReporting() -> ()
+pub fn silenceCrashReporting() -> ()
 {
   unsafe{ SetErrorMode(SilentErrorMode) };
 }
@@ -69,7 +69,7 @@ pub(crate) fn silenceCrashReporting() -> ()
 // =================================================================================================
 
 /// Base load address of the module containing this function.
-pub(crate) fn moduleBase() -> usize
+pub fn moduleBase() -> usize
 {
   let mut module: Handle = std::ptr::null_mut();
   let found: i32 = unsafe{
@@ -88,14 +88,14 @@ pub(crate) fn moduleBase() -> usize
 
 /// Reads `errno` of the calling thread. Per-CRT-instance, not per-process:
 /// a library statically linked against its own CRT keeps its own copy.
-pub(crate) fn readErrno() -> i32
+pub fn readErrno() -> i32
 {
   unsafe{ *_errno() }
 }
 
 /// `GetLastError` of the calling thread, captured alongside [`readErrno`].
 /// Most Win32 functions report failure here, not through `errno`.
-pub(crate) fn readOsError() -> Option<u32>
+pub fn readOsError() -> Option<u32>
 {
   Some(unsafe{ GetLastError() })
 }
@@ -107,14 +107,14 @@ pub(crate) fn readOsError() -> Option<u32>
 /// for `malloc`'s, so one allocator for everything avoids tracking which is
 /// which. A pointer from `Scope::alloc` must be released through chillffi,
 /// not by C code calling `free()`.
-pub(crate) fn allocate(length: usize) -> *mut c_void
+pub fn allocate(length: usize) -> *mut c_void
 {
   unsafe{ libc::aligned_malloc(length, crate::sys::MinAlignment * 2) }
 }
 
 /// `_aligned_malloc`. Argument order is reversed from `posix_memalign`'s,
 /// and failure is a null return rather than a status code.
-pub(crate) fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
+pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
   let pointer: *mut c_void = unsafe{ libc::aligned_malloc(length, alignment) };
   if pointer.is_null()
@@ -127,7 +127,7 @@ pub(crate) fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_
 }
 
 /// `_aligned_free` — see [`allocate`].
-pub(crate) fn deallocate(pointer: *mut c_void) -> ()
+pub fn deallocate(pointer: *mut c_void) -> ()
 {
   unsafe{ libc::aligned_free(pointer) };
 }

@@ -137,7 +137,7 @@ non_camel_case_types = "allow"
 # ======================================================================================================================
 
 # Clippy debugging:
-# cargo clippy
+# cargo clippy --all-targets -- -D warnings
 
 [lints.clippy]
 unused_unit = "allow"

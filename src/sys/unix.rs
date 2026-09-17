@@ -7,19 +7,19 @@ use std::ffi::c_void;
 /// Lets the kernel reap terminated clones so the main zygote never
 /// accumulates zombies. Must only be called there — with SIGCHLD ignored
 /// in the Runtime, `waitpid` in `supervisorLoop` would fail with `ECHILD`.
-pub(crate) fn ignoreChildExits() -> ()
+pub fn ignoreChildExits() -> ()
 {
   unsafe{ libc::signal(libc::SIGCHLD, libc::SIG_IGN); }
 }
 
 /// A clone is a crash domain, not a cooperating peer — kill it outright.
-pub(crate) fn killProcess(pid: ProcessId) -> ()
+pub fn killProcess(pid: ProcessId) -> ()
 {
   unsafe{ libc::kill(pid as libc::pid_t, libc::SIGKILL); }
 }
 
 /// Blocks until the process terminates.
-pub(crate) fn waitProcess(pid: ProcessId) -> ()
+pub fn waitProcess(pid: ProcessId) -> ()
 {
   unsafe{ libc::waitpid(pid as libc::pid_t, std::ptr::null_mut(), 0); }
 }
@@ -27,7 +27,7 @@ pub(crate) fn waitProcess(pid: ProcessId) -> ()
 // =================================================================================================
 
 /// Base load address of the module containing this function.
-pub(crate) fn moduleBase() -> usize
+pub fn moduleBase() -> usize
 {
   let mut info: libc::Dl_info = unsafe{ std::mem::zeroed() };
   unsafe{ libc::dladdr(moduleBase as *const () as *const c_void, &mut info) };
@@ -37,7 +37,7 @@ pub(crate) fn moduleBase() -> usize
 // =================================================================================================
 
 /// Reads `errno` of the calling thread.
-pub(crate) fn readErrno() -> i32
+pub fn readErrno() -> i32
 {
   #[cfg(target_os = "linux")]
   { unsafe{ *libc::__errno_location() } }
@@ -50,7 +50,7 @@ pub(crate) fn readErrno() -> i32
 }
 
 /// Unix has no second error channel besides `errno`.
-pub(crate) const fn readOsError() -> Option<u32>
+pub const fn readOsError() -> Option<u32>
 {
   None
 }
@@ -58,14 +58,14 @@ pub(crate) const fn readOsError() -> Option<u32>
 // =================================================================================================
 
 /// Plain `malloc`.
-pub(crate) fn allocate(length: usize) -> *mut c_void
+pub fn allocate(length: usize) -> *mut c_void
 {
   unsafe{ libc::malloc(length) }
 }
 
 /// `posix_memalign`. `alignment` is already normalized to a power of two
 /// no smaller than [`crate::sys::MinAlignment`].
-pub(crate) fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
+pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
   let mut pointer: *mut c_void = std::ptr::null_mut();
   let code: i32 = unsafe{ libc::posix_memalign(&mut pointer, alignment, length) };
@@ -77,7 +77,7 @@ pub(crate) fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_
 }
 
 /// `free` — valid for pointers from both [`allocate`] and [`allocateAligned`].
-pub(crate) fn deallocate(pointer: *mut c_void) -> ()
+pub fn deallocate(pointer: *mut c_void) -> ()
 {
   unsafe{ libc::free(pointer) };
 }

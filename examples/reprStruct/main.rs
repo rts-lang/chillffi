@@ -26,7 +26,7 @@ struct Clock { ticks: u64 }
 
 impl Clock
 {
-  fn split(self) -> (i64, i64)
+  const fn split(self) -> (i64, i64)
   {
     #[cfg(unix)]
     { (self.secs, self.nanos) }
