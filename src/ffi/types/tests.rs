@@ -2,7 +2,7 @@ use crate::ffi;
 use std::ffi::CString;
 use crate::ffi::types::primitive::Pointer;
 use crate::ffi::types::Value;
-use crate::platform::{LibcPath, LibmPath};
+use crate::platform::{LibcPath, LibmPath, StrdupSymbolName};
 // =================================================================================================
 
 /// Checks all signed integer types 
@@ -148,7 +148,7 @@ fn pointerRoundtrip() -> ()
   let len: usize = ffi!(|scope| {
     let libc: Library = scope.load(LibcPath)?;
     let ptr: Pointer = 
-      libc.call("strdup")
+      libc.call(StrdupSymbolName)
         .arg(c"hello")
         .result()?;
     assert_ne!(ptr, Pointer(0));
