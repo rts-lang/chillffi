@@ -102,20 +102,42 @@ pub fn readOsError() -> Option<u32>
 
 // =================================================================================================
 
-/// Every allocation, including plain [`allocate`], comes from
-/// `_aligned_malloc`: Windows requires `_aligned_free` for those and `free`
-/// for `malloc`'s, so one allocator for everything avoids tracking which is
-/// which. A pointer from `Scope::alloc` must be released through chillffi,
-/// not by C code calling `free()`.
-pub fn allocate(length: usize) -> *mut c_void
-{
-  unsafe{ libc::aligned_malloc(length, crate::sys::MinAlignment * 2) }
+/// Alignment plain `malloc` already guarantees on this CRT (`2 *
+/// sizeof(void*)`: 16 bytes on x64, 8 on x86 — matches `max_align_t`).
+const MallocAlignment: usize = crate::sys::MinAlignment * 2;
+
+thread_local! {
+  /// Pointers handed out via `_aligned_malloc`, which need `_aligned_free`
+  /// rather than plain `free`. A clone serves one request at a time (see
+  /// `cloneLoop`), so thread-local bookkeeping is enough — no locking needed.
+  static AlignedAllocations: std::cell::RefCell<std::collections::HashSet<usize>> =
+    std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
-/// `_aligned_malloc`. Argument order is reversed from `posix_memalign`'s,
-/// and failure is a null return rather than a status code.
+/// Plain `malloc`. Must stay plain: `Scope::free` also has to release
+/// pointers from arbitrary C-side allocators (e.g. a `malloc` called
+/// through FFI directly), and those are never in [`AlignedAllocations`].
+pub fn allocate(length: usize) -> *mut c_void
+{
+  unsafe{ libc::malloc(length) }
+}
+
+/// Plain `malloc` already satisfies alignment up to [`MallocAlignment`];
+/// only larger requests need `_aligned_malloc`, tracked in
+/// [`AlignedAllocations`] so [`deallocate`] knows to release it with
+/// `_aligned_free` instead of `free`.
 pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
+  if alignment <= MallocAlignment
+  {
+    let pointer: *mut c_void = unsafe{ libc::malloc(length) };
+    if pointer.is_null()
+    {
+      return Err(format!("malloc failed for {} bytes", length));
+    }
+    return Ok(pointer);
+  }
+
   let pointer: *mut c_void = unsafe{ libc::aligned_malloc(length, alignment) };
   if pointer.is_null()
   {
@@ -123,13 +145,25 @@ pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, S
       "_aligned_malloc failed for {} bytes at alignment {}", length, alignment
     ));
   }
+  AlignedAllocations.with(|set| { set.borrow_mut().insert(pointer as usize); });
   Ok(pointer)
 }
 
-/// `_aligned_free` — see [`allocate`].
+/// `free`, unless `pointer` is a tracked `_aligned_malloc` result, in which
+/// case `_aligned_free` — the two are not interchangeable on Windows.
 pub fn deallocate(pointer: *mut c_void) -> ()
 {
-  unsafe{ libc::aligned_free(pointer) };
+  let wasAligned: bool =
+    AlignedAllocations.with(|set| set.borrow_mut().remove(&(pointer as usize)));
+
+  if wasAligned
+  {
+    unsafe{ libc::aligned_free(pointer) };
+  }
+  else
+  {
+    unsafe{ libc::free(pointer) };
+  }
 }
 
 // =================================================================================================
