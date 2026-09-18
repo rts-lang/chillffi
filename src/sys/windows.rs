@@ -69,10 +69,10 @@ pub const StatusProcessCloned: i32 = 0x00000129;
 pub struct ClietnID
 {
   /// todo desc
-  pub UniqueProcess: *mut c_void,
+  pub uniqueProcess: *mut c_void,
   
   /// todo desc
-  pub UniqueThread: *mut c_void
+  pub uniqueThread: *mut c_void
 }
 
 /// todo desc
@@ -129,19 +129,19 @@ pub struct SectionImageInformation
 pub struct RtlUserProcessInformation
 {
   /// todo desc
-  pub Length: u32,
+  pub length: u32,
 
   /// todo desc
-  pub ProcessHandle: Handle,
+  pub processHandle: Handle,
 
   /// todo desc
-  pub ThreadHandle: Handle,
+  pub threadHandle: Handle,
 
   /// todo desc
-  pub ClientId: ClietnID,
+  pub clientId: ClietnID,
 
   /// todo desc
-  pub ImageInformation: SectionImageInformation
+  pub imageInformation: SectionImageInformation
 }
 
 /// SYMBOL_INFO (dbghelp). SizeOfStruct must be set to the size of the struct
@@ -154,49 +154,49 @@ pub struct RtlUserProcessInformation
 struct SymbolInfo 
 {
   /// todo desc
-  SizeOfStruct: u32,
+  sizeOfStruct: u32,
   
   /// todo desc
-  TypeIndex: u32,
+  typeIndex: u32,
   
   /// todo desc
-  Reserved: [u64; 2],
+  reserved: [u64; 2],
   
   /// todo desc
-  Index: u32,
+  index: u32,
   
   /// todo desc
-  Size: u32,
+  size: u32,
   
   /// todo desc
-  ModBase: u64,
+  modBase: u64,
   
   /// todo desc
-  Flags: u32,
+  flags: u32,
   
   /// todo desc
-  Value: u64,
+  value: u64,
   
   /// todo desc
-  Address: u64,
+  address: u64,
   
   /// todo desc
-  Register: u32,
+  register: u32,
   
   /// todo desc
-  Scope: u32,
+  scope: u32,
   
   /// todo desc
-  Tag: u32,
+  tag: u32,
   
   /// todo desc
-  NameLen: u32,
+  nameLen: u32,
   
   /// todo desc
-  MaxNameLen: u32,
+  maxNameLen: u32,
   
   /// todo desc
-  Name: [i8; 2000]
+  name: [i8; 2000]
 }
 
 #[link(name = "kernel32")]
@@ -440,7 +440,7 @@ pub struct CloneResult
 pub fn cloneProcess() -> Result<CloneResult, i32>
 {
   let mut info: RtlUserProcessInformation = unsafe{ std::mem::zeroed() };
-  info.Length = size_of::<RtlUserProcessInformation>() as u32;
+  info.length = size_of::<RtlUserProcessInformation>() as u32;
 
   // No INHERIT_HANDLES — keeps Runtime↔Zygote control pipes intact.
   // No CREATE_SUSPENDED — some Win32/CSRSS init paths (filesystem APIs like
@@ -466,9 +466,9 @@ pub fn cloneProcess() -> Result<CloneResult, i32>
   }
 
   Ok(CloneResult {
-    pid: info.ClientId.UniqueProcess as u32,
-    processHandle: info.ProcessHandle,
-    threadHandle: info.ThreadHandle
+    pid: info.clientId.uniqueProcess as u32,
+    processHandle: info.processHandle,
+    threadHandle: info.threadHandle
   })
 }
 
@@ -492,7 +492,7 @@ fn toWide(s: &str) -> Vec<u16>
 /// Unique pipe path for clone data IPC (one duplex pipe per clone).
 pub fn cloneDataPipeName(clonePid: u32) -> String
 {
-  format!(r"\\.\pipe\chillffi-data-{}", clonePid)
+  format!(r"\\.\pipe\chillffi-data-{}", clonePid) // todo Тут стоит подумать над этим хардкорным названием
 }
 
 /// Child side: create a duplex named-pipe server (does not wait for client yet).
@@ -776,11 +776,11 @@ unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64
   for name in names 
   {
     let mut info: SymbolInfo = unsafe{ std::mem::zeroed() };
-    info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
-    info.MaxNameLen = 2000;
+    info.sizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
+    info.maxNameLen = 2000;
     let ok = unsafe{ SymFromName(process, name.as_ptr(), &mut info) };
     if ok != 0 {
-      return Some(info.Address);
+      return Some(info.address);
     }
   }
   None

@@ -15,6 +15,8 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::thread;
+use bincode::config::Configuration;
+use crate::sys::{Handle, ProcessId};
 // =================================================================================================
 
 /* todo
@@ -234,13 +236,17 @@ pub struct ClonedZygote
 {
   /// Process PID.
   pub pid: u32,
+  
+  /// todo desc
   #[cfg(unix)]
   requestTx: IpcSender<FFIRequest>,
+  /// todo desc
   #[cfg(unix)]
   responseRx: IpcReceiver<FFIResponse>,
+  
   /// Windows: one duplex named-pipe for request/response framing.
   #[cfg(windows)]
-  data_pipe: sys::Handle,
+  dataPipe: Handle
 }
 
 impl ClonedZygote
@@ -296,7 +302,7 @@ impl ClonedZygote
       #[cfg(windows)]
       ZygoteReply::Clone {
         pid,
-        data_pipe
+        dataPipe
       } =>
       {
         if pid == 0
@@ -305,12 +311,12 @@ impl ClonedZygote
             io::Error::other("Main zygote failed to create a clone (pid=0)")
           );
         }
-        let h = sys::connectPipeClient(&data_pipe).ok_or_else(|| {
+        let h: Handle = sys::connectPipeClient(&dataPipe).ok_or_else(|| {
           io::Error::other("connect data pipe failed")
         })?;
         Ok(Self {
           pid,
-          data_pipe: h
+          dataPipe: h
         })
       }
       ZygoteReply::SpawnFailed => Err(
@@ -337,21 +343,28 @@ impl ClonedZygote
     }
     #[cfg(windows)]
     {
-      let cfg = bincode::config::standard();
-      let bytes = bincode::serde::encode_to_vec(&request, cfg)
+      // todo desc
+      let config: Configuration = bincode::config::standard();
+      let bytes: Vec<u8> = bincode::serde::encode_to_vec(&request, config)
         .map_err(|e| format!("serialize FFIRequest: {e}"))?;
-      if !sys::pipeSend(self.data_pipe, &bytes) {
+      
+      // todo desc
+      if !sys::pipeSend(self.dataPipe, &bytes) {
         return Err(
           "Zygote clone IPC failed while sending request: pipe write failed".into()
         );
       }
-      let resp_bytes = sys::pipeRecv(self.data_pipe).ok_or_else(|| {
+      
+      // todo desc
+      let responseBytes: Vec<u8> = sys::pipeRecv(self.dataPipe).ok_or_else(|| {
         format!(
           "Zygote clone IPC failed while reading response: pipe read failed (GetLastError={})",
           sys::lastPipeError()
         )
       })?;
-      let (resp, _) = bincode::serde::decode_from_slice(&resp_bytes, cfg)
+      
+      // todo desc
+      let (resp, _) = bincode::serde::decode_from_slice(&responseBytes, config)
         .map_err(|e| format!("deserialize FFIResponse: {e}"))?;
       Ok(resp)
     }
@@ -367,7 +380,7 @@ impl Drop for ClonedZygote
     sys::killProcess(self.pid);
     #[cfg(windows)]
     {
-      sys::closeHandle(self.data_pipe);
+      sys::closeHandle(self.dataPipe);
     }
   }
 }
@@ -557,112 +570,114 @@ fn zygoteLoop(serverName: String) -> !
     match cmd
     {
       ZygoteCommand::SpawnClone =>
+      {
+        // Parent creates a one-shot server; only the *name* crosses to the child.
+        // Data path is established AFTER fork/clone:
+        //   Unix  — ipc-channel ends created in child, sent over one-shot
+        //   Windows — named pipes by name (ipc-channel handle OOB breaks under
+        //             RtlCloneUserProcess)
+        let (cloneServer, cloneServerName): (
+          IpcOneShotServer<CloneBootstrap>,
+          String
+        ) = match IpcOneShotServer::new()
         {
-          // Parent creates a one-shot server; only the *name* crosses to the child.
-          // Data path is established AFTER fork/clone:
-          //   Unix  — ipc-channel ends created in child, sent over one-shot
-          //   Windows — named pipes by name (ipc-channel handle OOB breaks under
-          //             RtlCloneUserProcess)
-          let (cloneServer, cloneServerName): (
-            IpcOneShotServer<CloneBootstrap>,
-            String
-          ) = match IpcOneShotServer::new()
-          {
-            Ok(s) => s,
-            Err(_) =>
-              {
-                let _ = replyTx.send(ZygoteReply::SpawnFailed);
-                continue;
-              }
-          };
-
-          #[cfg(unix)]
-          let spawned: Option<u32> = match unsafe { libc::fork() }
-          {
-            -1 => None,
-            0 =>
-              {
-                std::mem::forget(cloneServer);
-                std::mem::forget(commandRx);
-                std::mem::forget(replyTx);
-                cloneBootstrapLoop(cloneServerName)
-              }
-            pid => Some(pid as u32)
-          };
-
-          #[cfg(windows)]
-          let spawned: Option<u32> = match sys::cloneProcess()
-          {
-            Ok(result) =>
-              {
-                let pid = result.pid;
-                // Thread already running (no CREATE_SUSPENDED).
-                sys::closeCloneHandles(&result);
-                Some(pid)
-              }
-            Err(sys::STATUS_PROCESS_CLONED) =>
-              {
-                std::mem::forget(cloneServer);
-                std::mem::forget(commandRx);
-                std::mem::forget(replyTx);
-                // We are the clone. The inherited ntdll CSR data block
-                // (CsrPortHandle, CsrInitOnceDone, CsrPortHeap, CsrHeap, ...)
-                // references the parent's CSR_PROCESS on the csrss.exe side.
-                // Any Win32/basesrv call (reattachConsole, _stat64 in
-                // handleRequest, etc.) AVs and we die with ERROR_BROKEN_PIPE
-                // (109) on the data pipe. reconnectCsr() zeroes the whole
-                // block, calls CsrClientConnectToServer for BASESRV + USERSRV
-                // against \Sessions\{sid}\Windows, and registers the current
-                // thread with RtlRegisterThreadWithCsrss. Best-effort: if
-                // symbols were never resolved, we proceed anyway — same
-                // failure mode as before this fix.
-                let csrOk = sys::reconnectCsr();
-                eprintln!("[child] reconnectCsr={}", csrOk);
-                // reattachConsole goes through Win32 → CSRSS. If CSR was
-                // not reconnected (ARM64 without a resolved block), the
-                // stale ALPC port makes FreeConsole/AttachConsole hang —
-                // the clone never reaches cloneBootstrapLoop, and the
-                // parent blocks forever on cloneServer.accept().
-                if csrOk {
-                  sys::reattachConsole();
-                }
-                sys::silenceCrashReporting();
-                cloneBootstrapLoop(cloneServerName)
-              }
-            Err(_) => None
-          };
-
-          let Some(pid) = spawned else
+          Ok(s) => s,
+          Err(_) =>
           {
             let _ = replyTx.send(ZygoteReply::SpawnFailed);
             continue;
+          }
+        };
+
+        #[cfg(unix)]
+        let spawned: Option<u32> = match unsafe { libc::fork() }
+        {
+          -1 => None,
+          0 =>
+          {
+            std::mem::forget(cloneServer);
+            std::mem::forget(commandRx);
+            std::mem::forget(replyTx);
+            cloneBootstrapLoop(cloneServerName)
+          }
+          pid => Some(pid as u32)
+        };
+
+        #[cfg(windows)]
+        let spawned: Option<u32> = match sys::cloneProcess()
+        {
+          Ok(result) =>
+          {
+            let pid: ProcessId = result.pid;
+            // Thread already running (no CREATE_SUSPENDED).
+            sys::closeCloneHandles(&result);
+            Some(pid)
+          }
+          Err(sys::StatusProcessCloned) =>
+          {
+            std::mem::forget(cloneServer);
+            std::mem::forget(commandRx);
+            std::mem::forget(replyTx);
+            
+            // We are the clone. The inherited ntdll CSR data block
+            // (CsrPortHandle, CsrInitOnceDone, CsrPortHeap, CsrHeap, ...)
+            // references the parent's CSR_PROCESS on the csrss.exe side.
+            // Any Win32/basesrv call (reattachConsole, _stat64 in
+            // handleRequest, etc.) AVs and we die with ERROR_BROKEN_PIPE
+            // (109) on the data pipe. reconnectCsr() zeroes the whole
+            // block, calls CsrClientConnectToServer for BASESRV + USERSRV
+            // against \Sessions\{sid}\Windows, and registers the current
+            // thread with RtlRegisterThreadWithCsrss. Best-effort: if
+            // symbols were never resolved, we proceed anyway — same
+            // failure mode as before this fix.
+            let csrOk: bool = sys::reconnectCsr();
+            eprintln!("[child] reconnectCsr={}", csrOk);
+            
+            // reattachConsole goes through Win32 → CSRSS. If CSR was
+            // not reconnected (ARM64 without a resolved block), the
+            // stale ALPC port makes FreeConsole/AttachConsole hang —
+            // the clone never reaches cloneBootstrapLoop, and the
+            // parent blocks forever on cloneServer.accept().
+            if csrOk {
+              sys::reattachConsole();
+            }
+            sys::silenceCrashReporting();
+            cloneBootstrapLoop(cloneServerName)
+          }
+          Err(_) => None
+        };
+
+        let Some(pid) = spawned else
+        {
+          let _ = replyTx.send(ZygoteReply::SpawnFailed);
+          continue;
+        };
+
+        // Receive the Runtime-facing ends from the clone, forward them on.
+        let (_rx, bootstrap): (IpcReceiver<CloneBootstrap>, CloneBootstrap) =
+          match cloneServer.accept()
+          {
+            Ok(v) => v,
+            Err(_) =>
+            {
+              sys::killProcess(pid);
+              let _ = replyTx.send(ZygoteReply::SpawnFailed);
+              continue;
+            }
           };
 
-          // Receive the Runtime-facing ends from the clone, forward them on.
-          let (_rx, bootstrap): (IpcReceiver<CloneBootstrap>, CloneBootstrap) =
-            match cloneServer.accept()
-            {
-              Ok(v) => v,
-              Err(_) =>
-                {
-                  sys::killProcess(pid);
-                  let _ = replyTx.send(ZygoteReply::SpawnFailed);
-                  continue;
-                }
-            };
-
-          #[cfg(unix)]
-          let _ = replyTx.send(ZygoteReply::Clone {
-            pid,
-            requestTx: bootstrap.requestTx,
-            responseRx: bootstrap.responseRx
-          });
-          #[cfg(windows)]
-          let _ = replyTx.send(ZygoteReply::Clone {
-            pid,
-            data_pipe: bootstrap.data_pipe
-          });
-        }
+        #[cfg(unix)]
+        let _ = replyTx.send(ZygoteReply::Clone {
+          pid,
+          requestTx: bootstrap.requestTx,
+          responseRx: bootstrap.responseRx
+        });
+        #[cfg(windows)]
+        let _ = replyTx.send(ZygoteReply::Clone {
+          pid,
+          data_pipe: bootstrap.data_pipe
+        });
+      }
     }
     //
   }
@@ -670,6 +685,7 @@ fn zygoteLoop(serverName: String) -> !
 
 // =================================================================================================
 
+/// todo desc
 fn cloneBootstrapLoop(serverName: String) -> !
 {
   #[cfg(unix)]
@@ -709,11 +725,11 @@ fn cloneBootstrapLoop(serverName: String) -> !
 
   #[cfg(windows)]
   {
-    let myPid = sys::currentProcessId();
-    let pipeName = sys::cloneDataPipeName(myPid);
+    let myPid: u32 = sys::currentProcessId();
+    let pipeName: String = sys::cloneDataPipeName(myPid);
 
     // Create the duplex server BEFORE advertising the name.
-    let dataPipe = match sys::createPipeServer(&pipeName)
+    let dataPipe: Handle = match sys::createPipeServer(&pipeName)
     {
       Some(h) => h,
       None => std::process::exit(1)
@@ -758,6 +774,7 @@ pub fn runAsClone() -> !
 
 // =================================================================================================
 
+/// todo desc
 #[cfg(unix)]
 fn cloneLoop(requestRx: IpcReceiver<FFIRequest>, responseTx: IpcSender<FFIResponse>) -> !
 {
@@ -780,15 +797,19 @@ fn cloneLoop(requestRx: IpcReceiver<FFIRequest>, responseTx: IpcSender<FFIRespon
   }
 }
 
+/// todo desc
 #[cfg(windows)]
-fn cloneLoopWindows(dataPipe: sys::Handle) -> !
+fn cloneLoopWindows(dataPipe: Handle) -> !
 {
+  /// todo dedsc
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
-  let cfg = bincode::config::standard();
+  let cfg: Configuration = bincode::config::standard();
 
+  // todo desc
   loop
   {
-    let bytes = match sys::pipeRecv(dataPipe)
+    // todo desc
+    let bytes: Vec<u8> = match sys::pipeRecv(dataPipe)
     {
       Some(b) => b,
       None => std::process::exit(0)
@@ -810,6 +831,7 @@ fn cloneLoopWindows(dataPipe: sys::Handle) -> !
       Err(_) => FFIResponse::Err(FFIError::Other("clone panicked while handling request".into()))
     };
 
+    // todo desc
     let out = match bincode::serde::encode_to_vec(&response, cfg)
     {
       Ok(v) => v,
@@ -824,6 +846,7 @@ fn cloneLoopWindows(dataPipe: sys::Handle) -> !
 
 // =================================================================================================
 
+/// todo desc
 fn handleRequest(
   request: FFIRequest,
   cache: &mut FxHashMap<String, Library>
