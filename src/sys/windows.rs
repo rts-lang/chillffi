@@ -7,6 +7,7 @@
 // =================================================================================================
 use crate::sys::ProcessId;
 use std::ffi::c_void;
+#[cfg(target_arch = "x86_64")]
 use std::path::PathBuf;
 use std::ptr;
 // =================================================================================================
@@ -810,20 +811,20 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
 
   // If _NT_SYMBOL_PATH is already set, let dbghelp read it; otherwise
   // build a default cache + msdl path so first-run CI also works.
-  let searchPath: Option<Vec<u16>> = if std::env::var("_NT_SYMBOL_PATH").is_ok() {
-    None
-  } else 
-  {
-    let cache: PathBuf = std::env::temp_dir().join("chillffi-symbols");
-    Some(
-      format!(
-        "srv*{}*https://msdl.microsoft.com/download/symbols\0",
-        cache.display()
+  let searchPath: Option<Vec<u16>> = 
+    if std::env::var("_NT_SYMBOL_PATH").is_ok() {
+      None
+    } else {
+      let cache: PathBuf = std::env::temp_dir().join("chillffi-symbols");
+      Some(
+        format!(
+          "srv*{}*https://msdl.microsoft.com/download/symbols\0",
+          cache.display()
+        )
+          .encode_utf16()
+          .collect(),
       )
-        .encode_utf16()
-        .collect(),
-    )
-  };
+    };
   let searchPathPtr: *const u16 = searchPath.as_ref().map_or(ptr::null(), |v| v.as_ptr());
 
   if unsafe{ SymInitializeW(process, searchPathPtr, 1) } == 0 

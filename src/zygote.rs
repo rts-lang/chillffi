@@ -15,7 +15,9 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::thread;
+#[cfg(windows)]
 use bincode::config::Configuration;
+#[cfg(windows)]
 use crate::sys::{Handle, ProcessId};
 // =================================================================================================
 
@@ -169,7 +171,7 @@ enum ZygoteReply
   #[cfg(windows)]
   Clone {
     pid: u32,
-    data_pipe: String
+    dataPipe: String
   },
   /// `ipc::channel()` or `fork()`/`RtlCloneUserProcess` failed inside Main Zygote.
   SpawnFailed
@@ -201,7 +203,7 @@ struct CloneBootstrap
 #[derive(Serialize, Deserialize)]
 struct CloneBootstrap
 {
-  data_pipe: String
+  dataPipe: String
 }
 
 // =================================================================================================
@@ -675,7 +677,7 @@ fn zygoteLoop(serverName: String) -> !
         #[cfg(windows)]
         let _ = replyTx.send(ZygoteReply::Clone {
           pid,
-          data_pipe: bootstrap.data_pipe
+          dataPipe: bootstrap.dataPipe
         });
       }
     }
@@ -742,7 +744,7 @@ fn cloneBootstrapLoop(serverName: String) -> !
     };
     if bootstrapTx
       .send(CloneBootstrap {
-        data_pipe: pipeName
+        dataPipe: pipeName
       })
       .is_err()
     {
@@ -801,7 +803,7 @@ fn cloneLoop(requestRx: IpcReceiver<FFIRequest>, responseTx: IpcSender<FFIRespon
 #[cfg(windows)]
 fn cloneLoopWindows(dataPipe: Handle) -> !
 {
-  /// todo dedsc
+  // todo desc
   let mut libraryCache: FxHashMap<String, Library> = FxHashMap::default();
   let cfg: Configuration = bincode::config::standard();
 
