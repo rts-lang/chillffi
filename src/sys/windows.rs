@@ -7,107 +7,241 @@
 // =================================================================================================
 use crate::sys::ProcessId;
 use std::ffi::c_void;
+use std::path::PathBuf;
 use std::ptr;
 // =================================================================================================
 
+/// todo desc
 pub type Handle = *mut c_void;
 
+// =================================================================================================
+
+/// todo desc
 const ProcessTerminate: u32 = 0x0001;
+
+/// todo desc
 const Synchronize: u32 = 0x0010_0000;
+
+/// todo desc
 const Infinite: u32 = 0xFFFF_FFFF;
+
+/// todo desc
 const SilentErrorMode: u32 = 0x0001 | 0x0002 | 0x8000;
+
+/// todo desc
 const ModuleHandleFromAddress: u32 = 0x0002 | 0x0004;
 
+// =================================================================================================
+
+/// todo desc
 const PipeAccessDuplex: u32 = 0x00000003;
+
+/// todo desc
 const PipeTypeByte: u32 = 0x00000000;
+
+/// todo desc
 const PipeWait: u32 = 0x00000000;
+
+/// todo desc
 const PipeReadmodeByte: u32 = 0x00000000;
+
+/// todo desc
 const GenericRead: u32 = 0x80000000;
+
+/// todo desc
 const GenericWrite: u32 = 0x40000000;
+
+/// todo desc
 const OpenExisting: u32 = 3;
+
+/// todo desc
 const FileAttributeNormal: u32 = 0x80;
 
+// =================================================================================================
+
+/// todo desc
 pub const StatusProcessCloned: i32 = 0x00000129;
 
+// =================================================================================================
+
+/// todo desc
 #[repr(C)]
 pub struct ClietnID
 {
+  /// todo desc
   pub UniqueProcess: *mut c_void,
+  
+  /// todo desc
   pub UniqueThread: *mut c_void
 }
 
+/// todo desc
 #[repr(C)]
 pub struct SectionImageInformation
 {
+  /// todo desc
   pub TransferAddress: *mut c_void,
+
+  /// todo desc
   pub ZeroBits: usize,
+
+  /// todo desc
   pub MaximumStackSize: usize,
+
+  /// todo desc
   pub CommittedStackSize: usize,
+
+  /// todo desc
   pub SubSystemType: u32,
+
+  /// todo desc
   pub SubSystemVersion: u32,
+
+  /// todo desc
   pub GpValue: u32,
+
+  /// todo desc
   pub ImageCharacteristics: u16,
+
+  /// todo desc
   pub DllCharacteristics: u16,
+
+  /// todo desc
   pub Machine: u16,
+
+  /// todo desc
   pub ImageContainsCode: u8,
+
+  /// todo desc
   pub ImageFlags: u8,
+
+  /// todo desc
   pub LoaderFlags: u32,
+
+  /// todo desc
   pub ImageFileSize: u32,
+
+  /// todo desc
   pub CheckSum: u32
 }
 
 #[repr(C)]
 pub struct RtlUserProcessInformation
 {
+  /// todo desc
   pub Length: u32,
+
+  /// todo desc
   pub ProcessHandle: Handle,
+
+  /// todo desc
   pub ThreadHandle: Handle,
+
+  /// todo desc
   pub ClientId: ClietnID,
+
+  /// todo desc
   pub ImageInformation: SectionImageInformation
 }
 
-// SYMBOL_INFO (dbghelp). SizeOfStruct must be set to the size of the struct
-// without the trailing `Name` array — 88 bytes on x64. We allocate a
-// 2000-byte Name buffer to be safe regardless of decoration length.
-// Only used by the x64 PDB strategy; on ARM64 the disasm path is the
-// only one that compiles, so the struct is cfg-gated to avoid dead code.
+/// SYMBOL_INFO (dbghelp). SizeOfStruct must be set to the size of the struct
+/// without the trailing `Name` array — 88 bytes on x64. We allocate a
+/// 2000-byte Name buffer to be safe regardless of decoration length.
+/// Only used by the x64 PDB strategy; on ARM64 the disasm path is the
+/// only one that compiles, so the struct is cfg-gated to avoid dead code.
 #[cfg(target_arch = "x86_64")]
 #[repr(C)]
 struct SymbolInfo 
 {
+  /// todo desc
   SizeOfStruct: u32,
+  
+  /// todo desc
   TypeIndex: u32,
+  
+  /// todo desc
   Reserved: [u64; 2],
+  
+  /// todo desc
   Index: u32,
+  
+  /// todo desc
   Size: u32,
+  
+  /// todo desc
   ModBase: u64,
+  
+  /// todo desc
   Flags: u32,
+  
+  /// todo desc
   Value: u64,
+  
+  /// todo desc
   Address: u64,
+  
+  /// todo desc
   Register: u32,
+  
+  /// todo desc
   Scope: u32,
+  
+  /// todo desc
   Tag: u32,
+  
+  /// todo desc
   NameLen: u32,
+  
+  /// todo desc
   MaxNameLen: u32,
+  
+  /// todo desc
   Name: [i8; 2000]
 }
 
 #[link(name = "kernel32")]
 unsafe extern "system"
 {
+  /// todo desc
   fn OpenProcess(desiredAccess: u32, inheritHandle: i32, processId: u32) -> Handle;
+
+  /// todo desc
   fn TerminateProcess(process: Handle, exitCode: u32) -> i32;
+
+  /// todo desc
   fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
+
+  /// todo desc
   fn CloseHandle(object: Handle) -> i32;
+
+  /// todo desc
   fn GetLastError() -> u32;
+
+  /// todo desc
   fn SetErrorMode(mode: u32) -> u32;
+
+  /// todo desc
   fn GetModuleHandleExW(flags: u32, moduleName: *const u16, module: *mut Handle) -> i32;
+
+  /// todo desc
   fn GetModuleHandleA(moduleName: *const u8) -> Handle;
+
+  /// todo desc
   fn GetProcAddress(module: Handle, name: *const u8) -> *mut c_void;
+
+  /// todo desc
   fn FreeConsole() -> i32;
+
+  /// todo desc
   fn AttachConsole(dwProcessId: u32) -> i32;
+
+  /// todo desc
   fn GetCurrentProcessId() -> u32;
+
+  /// todo desc
   fn ProcessIdToSessionId(processId: u32, sessionId: *mut u32) -> i32;
+
+  /// todo desc
   fn CreateNamedPipeW(
     lpName: *const u16,
     dwOpenMode: u32,
@@ -118,7 +252,11 @@ unsafe extern "system"
     nDefaultTimeOut: u32,
     lpSecurityAttributes: *mut c_void
   ) -> Handle;
+
+  /// todo desc
   fn ConnectNamedPipe(hNamedPipe: Handle, lpOverlapped: *mut c_void) -> i32;
+
+  /// todo desc
   fn CreateFileW(
     lpFileName: *const u16,
     dwDesiredAccess: u32,
@@ -128,6 +266,8 @@ unsafe extern "system"
     dwFlagsAndAttributes: u32,
     hTemplateFile: Handle
   ) -> Handle;
+  
+  /// todo desc
   fn ReadFile(
     hFile: Handle,
     lpBuffer: *mut u8,
@@ -135,6 +275,8 @@ unsafe extern "system"
     lpNumberOfBytesRead: *mut u32,
     lpOverlapped: *mut c_void
   ) -> i32;
+  
+  /// todo desc
   fn WriteFile(
     hFile: Handle,
     lpBuffer: *const u8,
@@ -142,13 +284,17 @@ unsafe extern "system"
     lpNumberOfBytesWritten: *mut u32,
     lpOverlapped: *mut c_void
   ) -> i32;
+  
+  /// todo desc
   fn SetNamedPipeHandleState(
     hNamedPipe: Handle,
     lpMode: *mut u32,
     lpMaxCollectionCount: *mut u32,
     lpCollectDataTimeout: *mut u32
   ) -> i32;
+  
   // Only used by the x64 PDB strategy in resolveCsrBlockViaPdb.
+  /// todo desc
   #[cfg(target_arch = "x86_64")]
   fn GetCurrentProcess() -> Handle;
 }
@@ -159,13 +305,20 @@ unsafe extern "system"
 #[link(name = "dbghelp")]
 unsafe extern "system"
 {
+  /// todo desc
   fn SymInitializeW(hProcess: Handle, userSearchPath: *const u16, fInvadeProcess: i32) -> i32;
+  
+  /// todo desc
   fn SymFromName(hProcess: Handle, name: *const i8, symbol: *mut SymbolInfo) -> i32;
+  
+  /// todo desc
   fn SymCleanup(hProcess: Handle) -> i32;
 }
 
 #[link(name = "ntdll")]
-unsafe extern "system" {
+unsafe extern "system"
+{
+  /// todo desc
   fn RtlCloneUserProcess(
     ProcessFlags: u32,
     ProcessSecurityDescriptor: *mut c_void,
@@ -173,44 +326,51 @@ unsafe extern "system" {
     DebugPort: Handle,
     ProcessInformation: *mut RtlUserProcessInformation
   ) -> i32;
-  // Undocumented. Re-establishes the ALPC connection to csrss.exe. Lazy: if
-  // CsrInitOnceDone is already set (which is always the case in a CoW clone,
-  // because the parent already went through CsrpConnectToServer), the call
-  // becomes a no-op. The whole CSR data block must be zeroed first.
-  //
-  // NOTE on the signature: ReactOS documents ConnectionInfoLength as a
-  // PULONG (in-out), but on Win10 1809+ Microsoft reshaped the API so that
-  // it is a plain ULONG value. We follow the Win10/11 shape used by WINNIE
-  // (NDSS'21, forklib/fork.cpp), cross-checked by reverse-engineering
-  // ntdll!CsrClientConnectToServer.
+  
+  /// Undocumented. Re-establishes the ALPC connection to csrss.exe. Lazy: if
+  /// CsrInitOnceDone is already set (which is always the case in a CoW clone,
+  /// because the parent already went through CsrpConnectToServer), the call
+  /// becomes a no-op. The whole CSR data block must be zeroed first.
+  ///
+  /// NOTE on the signature: ReactOS documents ConnectionInfoLength as a
+  /// PULONG (in-out), but on Win10 1809+ Microsoft reshaped the API so that
+  /// it is a plain ULONG value. We follow the Win10/11 shape used by WINNIE
+  /// (NDSS'21, forklib/fork.cpp), cross-checked by reverse-engineering
+  /// ntdll!CsrClientConnectToServer.
   fn CsrClientConnectToServer(
     ObjectDirectory: *const u16,
     ServerId: u32,
     ConnectionInfo: *mut c_void,
     ConnectionInfoLength: u32,
-    CalledFromServer: *mut u8,
+    CalledFromServer: *mut u8
   ) -> i32;
-  // Undocumented. Registers the current thread with CSRSS (CSR_THREAD
-  // allocation on the csrss.exe side). Without it, the first Win32 call
-  // that does CsrClientCallServer can blow up because the thread is unknown
-  // to the subsystem.
+  
+  /// Undocumented. Registers the current thread with CSRSS (CSR_THREAD
+  /// allocation on the csrss.exe side). Without it, the first Win32 call
+  /// that does CsrClientCallServer can blow up because the thread is unknown
+  /// to the subsystem.
   fn RtlRegisterThreadWithCsrss() -> i32;
-  // Exported on both x64 and ARM64 (checked via llvm-readobj --coff-exports
-  // on ntdll from Win11 23H2 ARM64). Best-effort fallback when the CSR
-  // data block can't be located — the official counterpart to the manual
-  // zero + CsrClientConnectToServer + RtlRegisterThreadWithCsrss dance.
-  // Treated as NTSTATUS: success is >= 0.
+  
+  /// Exported on both x64 and ARM64 (checked via llvm-readobj --coff-exports
+  /// on ntdll from Win11 23H2 ARM64). Best-effort fallback when the CSR
+  /// data block can't be located — the official counterpart to the manual
+  /// zero + CsrClientConnectToServer + RtlRegisterThreadWithCsrss dance.
+  /// Treated as NTSTATUS: success is >= 0.
   fn RtlPrepareForProcessCloning() -> i32;
 }
 
-unsafe extern "C" {
+unsafe extern "C"
+{
+  /// todo desc
   fn _errno() -> *mut i32;
 }
 
 // =================================================================================================
 
+/// todo desc
 pub const fn ignoreChildExits() -> () {}
 
+/// todo desc
 pub fn killProcess(pid: ProcessId) -> ()
 {
   let process: Handle = unsafe { OpenProcess(ProcessTerminate, 0, pid) };
@@ -221,6 +381,7 @@ pub fn killProcess(pid: ProcessId) -> ()
   unsafe{ CloseHandle(process) };
 }
 
+/// todo desc
 pub fn waitProcess(pid: ProcessId) -> ()
 {
   let process: Handle = unsafe{ OpenProcess(Synchronize, 0, pid) };
@@ -231,11 +392,13 @@ pub fn waitProcess(pid: ProcessId) -> ()
   unsafe{ CloseHandle(process) };
 }
 
+/// todo desc
 pub fn silenceCrashReporting() -> ()
 {
   unsafe{ SetErrorMode(SilentErrorMode) };
 }
 
+/// todo desc
 pub fn reattachConsole() -> ()
 {
   unsafe{
@@ -244,11 +407,13 @@ pub fn reattachConsole() -> ()
   }
 }
 
+/// todo desc
 pub fn currentProcessId() -> u32
 {
   unsafe{ GetCurrentProcessId() }
 }
 
+/// todo desc
 pub fn closeHandle(h: Handle) -> ()
 {
   if !h.is_null() && h as isize != -1 {
@@ -258,13 +423,20 @@ pub fn closeHandle(h: Handle) -> ()
 
 // =================================================================================================
 
+/// todo desc
 pub struct CloneResult
 {
+  /// todo desc
   pub pid: ProcessId,
+  
+  /// todo desc
   pub processHandle: Handle,
+  
+  /// todo desc
   pub threadHandle: Handle
 }
 
+/// todo desc
 pub fn cloneProcess() -> Result<CloneResult, i32>
 {
   let mut info: RtlUserProcessInformation = unsafe{ std::mem::zeroed() };
@@ -274,9 +446,9 @@ pub fn cloneProcess() -> Result<CloneResult, i32>
   // No CREATE_SUSPENDED — some Win32/CSRSS init paths (filesystem APIs like
   // _stat64) are incomplete when the clone starts suspended and is resumed
   // later; ERROR_BROKEN_PIPE (109) on the data pipe was the symptom.
-  let flags = 0u32;
+  let flags: u32 = 0u32;
 
-  let status = unsafe{
+  let status: i32 = unsafe{
     RtlCloneUserProcess(
       flags,
       ptr::null_mut(),
@@ -296,11 +468,11 @@ pub fn cloneProcess() -> Result<CloneResult, i32>
   Ok(CloneResult {
     pid: info.ClientId.UniqueProcess as u32,
     processHandle: info.ProcessHandle,
-    threadHandle: info.ThreadHandle,
+    threadHandle: info.ThreadHandle
   })
 }
 
-
+/// todo desc
 pub fn closeCloneHandles(result: &CloneResult) -> ()
 {
   closeHandle(result.processHandle);
@@ -311,6 +483,7 @@ pub fn closeCloneHandles(result: &CloneResult) -> ()
 // Named-pipe framed channel (length-prefixed messages). No handle passing.
 // =================================================================================================
 
+/// todo desc
 fn toWide(s: &str) -> Vec<u16>
 {
   s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -325,8 +498,8 @@ pub fn cloneDataPipeName(clonePid: u32) -> String
 /// Child side: create a duplex named-pipe server (does not wait for client yet).
 pub fn createPipeServer(name: &str) -> Option<Handle>
 {
-  let wide = toWide(name);
-  let h = unsafe{
+  let wide: Vec<u16> = toWide(name);
+  let h: Handle = unsafe{
     CreateNamedPipeW(
       wide.as_ptr(),
       PipeAccessDuplex,
@@ -335,7 +508,7 @@ pub fn createPipeServer(name: &str) -> Option<Handle>
       64 * 1024,
       64 * 1024,
       5000,
-      ptr::null_mut(),
+      ptr::null_mut()
     )
   };
   if h.is_null() || h as isize == -1 {
@@ -347,9 +520,9 @@ pub fn createPipeServer(name: &str) -> Option<Handle>
 /// Block until a client connects to a pipe created with [`createPipeServer`].
 pub fn acceptPipeClient(h: Handle) -> bool
 {
-  let ok = unsafe{ ConnectNamedPipe(h, ptr::null_mut()) };
+  let ok: i32 = unsafe{ ConnectNamedPipe(h, ptr::null_mut()) };
   if ok == 0 {
-    let err = unsafe{ GetLastError() };
+    let err: u32 = unsafe{ GetLastError() };
     // ERROR_PIPE_CONNECTED == 535
     return err == 535;
   }
@@ -359,10 +532,11 @@ pub fn acceptPipeClient(h: Handle) -> bool
 /// Parent/Runtime side: connect to an existing named-pipe server.
 pub fn connectPipeClient(name: &str) -> Option<Handle>
 {
-  let wide = toWide(name);
+  let wide: Vec<u16> = toWide(name);
   // Retry a few times — child may still be creating the server.
-  for _ in 0..50 {
-    let h = unsafe{
+  for _ in 0..50 
+  {
+    let h: Handle = unsafe{
       CreateFileW(
         wide.as_ptr(),
         GenericRead | GenericWrite,
@@ -386,22 +560,24 @@ pub fn connectPipeClient(name: &str) -> Option<Handle>
   None
 }
 
+/// todo desc
 fn writeAll(h: Handle, buf: &[u8]) -> bool
 {
   // Empty payload is valid (e.g. length prefix of a zero-byte body).
   if buf.is_empty() {
     return true;
   }
-  let mut off = 0;
-  while off < buf.len() {
+  let mut off: usize = 0;
+  while off < buf.len() 
+  {
     let mut written: u32 = 0;
-    let ok = unsafe{
+    let ok: i32 = unsafe{
       WriteFile(
         h,
         buf[off..].as_ptr(),
         (buf.len() - off) as u32,
         &mut written,
-        ptr::null_mut(),
+        ptr::null_mut()
       )
     };
     if ok == 0 || written == 0 {
@@ -414,12 +590,14 @@ fn writeAll(h: Handle, buf: &[u8]) -> bool
   true
 }
 
+/// todo desc
 fn readExact(h: Handle, buf: &mut [u8]) -> bool
 {
-  let mut off = 0;
-  while off < buf.len() {
+  let mut off: usize = 0;
+  while off < buf.len() 
+  {
     let mut read: u32 = 0;
-    let ok = unsafe{
+    let ok: i32 = unsafe{
       ReadFile(
         h,
         buf[off..].as_mut_ptr(),
@@ -443,7 +621,7 @@ pub fn pipeSend(h: Handle, payload: &[u8]) -> bool
   if payload.len() > u32::MAX as usize {
     return false;
   }
-  let mut msg = Vec::with_capacity(4 + payload.len());
+  let mut msg: Vec<u8> = Vec::with_capacity(4 + payload.len());
   msg.extend_from_slice(&(payload.len() as u32).to_le_bytes());
   msg.extend_from_slice(payload);
   writeAll(h, &msg)
@@ -453,11 +631,12 @@ pub fn pipeSend(h: Handle, payload: &[u8]) -> bool
 /// On failure returns None; call [`lastPipeError`] for the Win32 code.
 pub fn pipeRecv(h: Handle) -> Option<Vec<u8>>
 {
-  let mut lenBuf = [0u8; 4];
+  let mut lenBuf: [u8; 4] = [0u8; 4];
   if !readExact(h, &mut lenBuf) {
     return None;
   }
-  let len = u32::from_le_bytes(lenBuf) as usize;
+  
+  let len: usize = u32::from_le_bytes(lenBuf) as usize;
   // Sanity cap: 16 MiB
   if len > 16 * 1024 * 1024 {
     return None;
@@ -532,47 +711,54 @@ pub fn lastPipeError() -> u32
 //     if set). In air-gapped CI, Strategy 2 still works.
 // =================================================================================================
 
-// Hardcoded CSR data block size in ntdll. WINNIE (NDSS'21, Win10 1809)
-// measured 0x78 bytes from CsrServerApiRoutine to RtlpEnvironLookupTable.
-// We use 0x80 (128) as a safety margin for newer Win11 builds where the
-// layout may have grown slightly. Over-zeroing past the block is safe —
-// it lands in .data-section padding (zeros or uninitialised globals that
-// are never read before being written by ntdll itself).
-//
-// Empirically verified working on:
-//   - Win10/11 x64 (via PDB base + this size)
-//   - Win11 23H2 ARM64 (build 22631.7584, via CsrGetProcessId disasm;
-//     the +0x20 offset between CsrProcessId and block base matches the
-//     x64 layout exactly, so the same size is assumed to hold).
-const CSR_BLOCK_SIZE: usize = 0x80;
+/// Hardcoded CSR data block size in ntdll. WINNIE (NDSS'21, Win10 1809)
+/// measured 0x78 bytes from CsrServerApiRoutine to RtlpEnvironLookupTable.
+/// We use 0x80 (128) as a safety margin for newer Win11 builds where the
+/// layout may have grown slightly. Over-zeroing past the block is safe —
+/// it lands in .data-section padding (zeros or uninitialised globals that
+/// are never read before being written by ntdll itself).
+///
+/// Empirically verified working on:
+///   - Win10/11 x64 (via PDB base + this size)
+///   - Win11 23H2 ARM64 (build 22631.7584, via CsrGetProcessId disasm;
+///     the +0x20 offset between CsrProcessId and block base matches the
+///     x64 layout exactly, so the same size is assumed to hold).
+const CsrBlockSize: usize = 0x80;
 
-// Offset of CsrProcessId inside the CSR data block, relative to
-// CsrServerApiRoutine (the block start). Used by Strategy 2 (disasm) to
-// derive the block base from the address loaded by CsrGetProcessId.
-// Layout (from WINNIE gen_csrss_offsets.py .data dump, x64):
-//   +0x00  CsrServerApiRoutine          (8 bytes)
-//   +0x08  CsrClientProcess             (1 byte)
-//   +0x09  CsrInitOnceDone              (1 byte)
-//   +0x0A  padding                      (6 bytes)
-//   +0x10  CsrPortName                  (4 bytes)
-//   +0x14  padding                      (4 bytes)
-//   +0x18  qword_...                    (8 bytes)
-//   +0x20  CsrProcessId                 (8 bytes) <-- this
-//   +0x28  CsrReadOnlySharedMemorySize  (8 bytes)
-//   ...
-const CSR_PROCESS_ID_OFFSET: usize = 0x20;
+/// Offset of CsrProcessId inside the CSR data block, relative to
+/// CsrServerApiRoutine (the block start). Used by Strategy 2 (disasm) to
+/// derive the block base from the address loaded by CsrGetProcessId.
+/// Layout (from WINNIE gen_csrss_offsets.py .data dump, x64):
+///   +0x00  CsrServerApiRoutine          (8 bytes)
+///   +0x08  CsrClientProcess             (1 byte)
+///   +0x09  CsrInitOnceDone              (1 byte)
+///   +0x0A  padding                      (6 bytes)
+///   +0x10  CsrPortName                  (4 bytes)
+///   +0x14  padding                      (4 bytes)
+///   +0x18  qword_...                    (8 bytes)
+///   +0x20  CsrProcessId                 (8 bytes) <-- this
+///   +0x28  CsrReadOnlySharedMemorySize  (8 bytes)
+///   ...
+const CsrProcessIdOffset: usize = 0x20;
 
+/// todo desc
 #[derive(Clone, Copy)]
-struct CsrDataBlock {
+struct CsrDataBlock
+{
+  /// todo desc
   base: usize,
+  
+  /// todo desc
   size: usize,
-  // kernelbase!CtrlRoutine address (passed as BASESRV ConnectionInfo).
-  // Stored as `usize` so the struct is Send + Sync — raw pointers are
-  // neither. The address is read once from dbghelp and only ever
-  // dereferenced inside `unsafe` blocks in `reconnectCsr`.
-  ctrl_routine: usize,
+  
+  /// kernelbase!CtrlRoutine address (passed as BASESRV ConnectionInfo).
+  /// Stored as `usize` so the struct is Send + Sync — raw pointers are
+  /// neither. The address is read once from dbghelp and only ever
+  /// dereferenced inside `unsafe` blocks in `reconnectCsr`.
+  ctrlRoutine: usize
 }
 
+/// todo desc
 static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
   std::sync::OnceLock::new();
 
@@ -587,7 +773,8 @@ static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
 #[cfg(target_arch = "x86_64")]
 unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64>
 {
-  for name in names {
+  for name in names 
+  {
     let mut info: SymbolInfo = unsafe{ std::mem::zeroed() };
     info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
     info.MaxNameLen = 2000;
@@ -604,9 +791,9 @@ unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64
 /// BASESRV is tolerant of a NULL pointer in ConnectionInfo.
 unsafe fn resolveCtrlRoutine() -> *mut c_void
 {
-  let kernelbase = unsafe{ GetModuleHandleA(c"kernelbase.dll".as_ptr().cast()) };
+  let kernelbase: Handle = unsafe{ GetModuleHandleA(c"kernelbase.dll".as_ptr().cast()) };
   if kernelbase.is_null() {
-    return std::ptr::null_mut();
+    return ptr::null_mut();
   }
   unsafe{ GetProcAddress(kernelbase, c"CtrlRoutine".as_ptr().cast()) }
 }
@@ -625,8 +812,9 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
   // build a default cache + msdl path so first-run CI also works.
   let searchPath: Option<Vec<u16>> = if std::env::var("_NT_SYMBOL_PATH").is_ok() {
     None
-  } else {
-    let cache = std::env::temp_dir().join("chillffi-symbols");
+  } else 
+  {
+    let cache: PathBuf = std::env::temp_dir().join("chillffi-symbols");
     Some(
       format!(
         "srv*{}*https://msdl.microsoft.com/download/symbols\0",
@@ -636,9 +824,10 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
         .collect(),
     )
   };
-  let searchPathPtr = searchPath.as_ref().map_or(std::ptr::null(), |v| v.as_ptr());
+  let searchPathPtr: *const u16 = searchPath.as_ref().map_or(ptr::null(), |v| v.as_ptr());
 
-  if unsafe{ SymInitializeW(process, searchPathPtr, 1) } == 0 {
+  if unsafe{ SymInitializeW(process, searchPathPtr, 1) } == 0 
+  {
     eprintln!(
       "[csr] PDB: SymInitializeW failed: {}",
       unsafe{ GetLastError() }
@@ -646,7 +835,7 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
     return None;
   }
 
-  let csrBegin = unsafe{
+  let csrBegin: Option<u64> = unsafe{
     lookupSymbol(process, &[
       c"ntdll!CsrServerApiRoutine",
       c"CsrServerApiRoutine",
@@ -660,18 +849,18 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
     return None;
   };
 
-  let ctrl_routine = unsafe{ resolveCtrlRoutine() };
+  let ctrlRoutine: *mut c_void = unsafe{ resolveCtrlRoutine() };
   eprintln!(
     "[csr] PDB: resolved base={:#x} size={} ctrl_routine={:p}",
     begin,
-    CSR_BLOCK_SIZE,
-    ctrl_routine
+    CsrBlockSize,
+    ctrlRoutine
   );
 
   Some(CsrDataBlock {
     base: begin as usize,
-    size: CSR_BLOCK_SIZE,
-    ctrl_routine: ctrl_routine as usize,
+    size: CsrBlockSize,
+    ctrlRoutine: ctrlRoutine as usize
   })
 }
 
@@ -681,34 +870,34 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
 /// without any PDB / network access on any architecture.
 unsafe fn resolveCsrBlockViaDisasm() -> Option<CsrDataBlock>
 {
-  let ntdll = unsafe{ GetModuleHandleA(c"ntdll.dll".as_ptr().cast()) };
+  let ntdll: Handle = unsafe{ GetModuleHandleA(c"ntdll.dll".as_ptr().cast()) };
   if ntdll.is_null() {
     eprintln!("[csr] disasm: ntdll not loaded");
     return None;
   }
-  let fn_addr = unsafe{ GetProcAddress(ntdll, c"CsrGetProcessId".as_ptr().cast()) } as usize;
-  if fn_addr == 0 {
+  let fnAddr: usize = unsafe{ GetProcAddress(ntdll, c"CsrGetProcessId".as_ptr().cast()) } as usize;
+  if fnAddr == 0 {
     eprintln!("[csr] disasm: CsrGetProcessId not exported");
     return None;
   }
 
-  let csr_process_id_addr = unsafe{ decodeCsrProcessIdLoad(fn_addr) }?;
-  let base = csr_process_id_addr.checked_sub(CSR_PROCESS_ID_OFFSET)?;
-  let ctrl_routine = unsafe{ resolveCtrlRoutine() };
+  let csrProcessIdAddr = unsafe{ decodeCsrProcessIdLoad(fnAddr) }?;
+  let base: usize = csrProcessIdAddr.checked_sub(CsrProcessIdOffset)?;
+  let ctrlRoutine: *mut c_void = unsafe{ resolveCtrlRoutine() };
 
   eprintln!(
     "[csr] disasm: CsrGetProcessId={:#x} CsrProcessId={:#x} base={:#x} size={} ctrl_routine={:p}",
-    fn_addr,
-    csr_process_id_addr,
+    fnAddr,
+    csrProcessIdAddr,
     base,
-    CSR_BLOCK_SIZE,
-    ctrl_routine
+    CsrBlockSize,
+    ctrlRoutine
   );
 
   Some(CsrDataBlock {
     base,
-    size: CSR_BLOCK_SIZE,
-    ctrl_routine: ctrl_routine as usize,
+    size: CsrBlockSize,
+    ctrlRoutine: ctrlRoutine as usize
   })
 }
 
@@ -722,7 +911,7 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
     //   mov  eax, dword ptr [rip + disp32]   ; 8B 05 disp32
     //   ret                                  ; C3
     // The address of CsrProcessId = (fn_addr + 6) + sign_extend(disp32).
-    let bytes = unsafe { std::slice::from_raw_parts(fn_addr as *const u8, 8) };
+    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(fn_addr as *const u8, 8) };
     if bytes[0] != 0x8B || bytes[1] != 0x05 {
       eprintln!(
         "[csr] disasm x64: expected `mov eax, [rip+disp32]` (8B 05 ..), got {:02x} {:02x}",
@@ -730,7 +919,7 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
       );
       return None;
     }
-    let disp = i32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]);
+    let disp: i32 = i32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]);
     Some(fn_addr.wrapping_add(6).wrapping_add(disp as usize))
   }
 
@@ -752,23 +941,24 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
     // Scan window: 32 instructions covers a hefty prologue (stack
     // protector, /GS, Spectre v2 mitigations, BTI landing pad) plus the
     // ~6-instruction body we actually need. Bumping this has no cost.
-    let insts = unsafe{ std::slice::from_raw_parts(fn_addr as *const u32, 32) };
+    let insts: &[u32] = unsafe{ std::slice::from_raw_parts(fn_addr as *const u32, 32) };
     eprintln!(
       "[csr] disasm ARM64: insts = {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
       insts[0], insts[1], insts[2], insts[3],
       insts[4], insts[5], insts[6], insts[7]
     );
 
-    for i in 0..(insts.len() - 1) {
-      let a = insts[i];
-      let l = insts[i + 1];
+    for i in 0..(insts.len() - 1) 
+    {
+      let a: u32 = insts[i];
+      let l: u32 = insts[i+1];
 
       // adrp xD: bits[31:24] = 1001_0000 and bits[28:24] = 10000.
       if (a & 0x9F000000) != 0x90000000 {
         continue;
       }
-      let rd = (a & 0x1F) as u32;
-      let rn = ((l >> 5) & 0x1F) as u32;
+      let rd: u32 = a & 0x1F;
+      let rn: u32 = (l >> 5) & 0x1F;
       if rn != rd {
         continue;
       }
@@ -778,21 +968,21 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
       //   ldr Xt, [Xn, #imm12] : 0xF9400000 mask 0xFFC00000, scale 8
       // ldrb (0x39400000) / ldrh (0x79400000) won't match, so the
       // flag-byte load in the prologue is naturally skipped.
-      let scale = match l & 0xFFC00000 {
+      let scale: usize = match l & 0xFFC00000 {
         0xB9400000 => 4usize,
         0xF9400000 => 8usize,
-        _ => continue,
+        _ => continue
       };
 
-      let immlo = ((a >> 29) & 0x3) as u64;
-      let immhi = ((a >> 5) & 0x7FFFF) as u64;
-      let mut imm21 = (immhi << 2) | immlo;
+      let immlo: u64 = ((a >> 29) & 0x3) as u64;
+      let immhi: u64 = ((a >> 5) & 0x7FFFF) as u64;
+      let mut imm21: u64 = (immhi << 2) | immlo;
       if imm21 & (1u64 << 20) != 0 {
         imm21 |= !0u64 << 21;
       }
-      let page_addr = (fn_addr & !0xFFFusize).wrapping_add((imm21 << 12) as usize);
-      let imm12 = ((l >> 10) & 0xFFF) as usize;
-      let addr = page_addr.wrapping_add(imm12 * scale);
+      let pageAddr: usize = (fn_addr & !0xFFFusize).wrapping_add((imm21 << 12) as usize);
+      let imm12: usize = ((l >> 10) & 0xFFF) as usize;
+      let addr: usize = pageAddr.wrapping_add(imm12 * scale);
 
       eprintln!(
         "[csr] disasm ARM64: matched adrp@{} + ldr@{} -> {:#x} (scale {})",
@@ -813,6 +1003,7 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
   }
 }
 
+/// todo desc
 pub fn resolveCsrPortHandle() -> ()
 {
   CsrDataBlockAddress.get_or_init(|| {
@@ -850,7 +1041,7 @@ pub fn resolveCsrPortHandle() -> ()
 /// that failed helps diagnosing version-specific issues.
 pub fn reconnectCsr() -> bool
 {
-  let block = match CsrDataBlockAddress.get() {
+  let block: CsrDataBlock = match CsrDataBlockAddress.get() {
     Some(Some(b)) => *b,
     _ => {
       // Fallback: on ARM64 Win11 neither dbghelp nor disassembly could
@@ -860,7 +1051,7 @@ pub fn reconnectCsr() -> bool
       // it internally touches the still-broken CSR port), the caller will
       // see it never return — same failure mode as before this fallback.
       eprintln!("[csr] block unresolved; trying RtlPrepareForProcessCloning");
-      let status = unsafe{ RtlPrepareForProcessCloning() };
+      let status: i32 = unsafe{ RtlPrepareForProcessCloning() };
       eprintln!(
         "[csr] RtlPrepareForProcessCloning -> ntstatus={:#x}",
         status
@@ -893,15 +1084,15 @@ pub fn reconnectCsr() -> bool
   // Step 3a: connect to BASESRV (ServerId=1). ConnectionInfo is the address
   // of kernelbase!CtrlRoutine (8 bytes on x64) — passed verbatim, no capture
   // buffer.
-  let mut baseSrvInfo: *mut c_void = block.ctrl_routine as *mut c_void;
+  let mut baseSrvInfo: *mut c_void = block.ctrlRoutine as *mut c_void;
   let mut calledFromServer: u8 = 0;
-  let status1 = unsafe{
+  let status1: i32 = unsafe{
     CsrClientConnectToServer(
       objectDirectory.as_ptr(),
       1,
       &mut baseSrvInfo as *mut _ as *mut c_void,
       8,
-      &mut calledFromServer,
+      &mut calledFromServer
     )
   };
   if status1 < 0 {
@@ -915,14 +1106,14 @@ pub fn reconnectCsr() -> bool
   // Step 3b: connect to USERSRV (ServerId=3). ConnectionInfo is a zeroed
   // 0x240-byte buffer (matches what kernel32!BasepConnect does on first
   // connect — WINNIE fork.cpp uses the same shape).
-  let mut userSrvInfo = [0u8; 0x240];
-  let status2 = unsafe{
+  let mut userSrvInfo: [u8; 576] = [0u8; 0x240];
+  let status2: i32 = unsafe{
     CsrClientConnectToServer(
       objectDirectory.as_ptr(),
       3,
       userSrvInfo.as_mut_ptr() as *mut c_void,
       0x240,
-      &mut calledFromServer,
+      &mut calledFromServer
     )
   };
   if status2 < 0 {
@@ -935,7 +1126,7 @@ pub fn reconnectCsr() -> bool
 
   // Step 4: register the current thread with CSRSS. This is the piece that
   // was completely missing from the first attempt.
-  let status3 = unsafe{ RtlRegisterThreadWithCsrss() };
+  let status3: i32 = unsafe{ RtlRegisterThreadWithCsrss() };
   if status3 < 0 {
     eprintln!(
       "[csr] RtlRegisterThreadWithCsrss failed: ntstatus={:#x}",
@@ -949,17 +1140,18 @@ pub fn reconnectCsr() -> bool
     sessionId,
     block.base,
     block.size,
-    block.ctrl_routine
+    block.ctrlRoutine
   );
   true
 }
 
 // =================================================================================================
 
+/// todo desc
 pub fn moduleBase() -> usize
 {
   let mut module: Handle = ptr::null_mut();
-  let found = unsafe{
+  let found: i32 = unsafe{
     GetModuleHandleExW(
       ModuleHandleFromAddress,
       moduleBase as *const () as *const u16,
@@ -972,11 +1164,13 @@ pub fn moduleBase() -> usize
   module as usize
 }
 
+/// todo desc
 pub fn readErrno() -> i32
 {
   unsafe{ *_errno() }
 }
 
+/// todo desc
 pub fn readOsError() -> Option<u32>
 {
   Some(unsafe{ GetLastError() })
@@ -984,29 +1178,33 @@ pub fn readOsError() -> Option<u32>
 
 // =================================================================================================
 
+/// todo desc
 const MallocAlignment: usize = crate::sys::MinAlignment * 2;
 
-thread_local! {
+thread_local!{
+  /// todo desc
   static AlignedAllocations: std::cell::RefCell<std::collections::HashSet<usize>> =
     std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
+/// todo desc
 pub fn allocate(length: usize) -> *mut c_void
 {
   unsafe{ libc::malloc(length) }
 }
 
+/// todo desc
 pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
   if alignment <= MallocAlignment {
-    let pointer = unsafe{ libc::malloc(length) };
+    let pointer: *mut c_void = unsafe{ libc::malloc(length) };
     if pointer.is_null() {
       return Err(format!("malloc failed for {} bytes", length));
     }
     return Ok(pointer);
   }
 
-  let pointer = unsafe{ libc::aligned_malloc(length, alignment) };
+  let pointer: *mut c_void = unsafe{ libc::aligned_malloc(length, alignment) };
   if pointer.is_null() {
     return Err(format!(
       "_aligned_malloc failed for {} bytes at alignment {}",
@@ -1019,9 +1217,10 @@ pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, S
   Ok(pointer)
 }
 
+/// todo desc
 pub fn deallocate(pointer: *mut c_void) -> ()
 {
-  let wasAligned =
+  let wasAligned: bool =
     AlignedAllocations.with(|set| set.borrow_mut().remove(&(pointer as usize)));
   if wasAligned {
     unsafe{ libc::aligned_free(pointer) };
