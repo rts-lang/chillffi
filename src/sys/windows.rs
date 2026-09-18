@@ -768,7 +768,7 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
 /// and the clone falls back to the broken-port path.
 pub fn resolveCsrPortHandle() -> ()
 {
-  CsrDataBlockAddress.get_or_init(|| unsafe {
+  CsrDataBlockAddress.get_or_init(|| {
     // Strategy 1: PDB symbol lookup. Works on Win10/11 x64.
     if let Some(block) = unsafe { resolveCsrBlockViaPdb() } {
       return Some(block);
