@@ -1,24 +1,70 @@
-//! Windows implementation of the [`crate::sys`] layer.
+//! Windows sys layer + named-pipe data channel for zygote clones.
 //!
-//! `kernel32` is already linked into every Rust binary on Windows, so the
-//! handful of Win32 calls below are declared directly rather than pulling
-//! in `windows-sys`.
+//! RtlCloneUserProcess does CoW cloning. ipc-channel cannot transfer
+//! IpcSender/IpcReceiver handles across a cloned process (DuplicateHandle
+//! / GetNamedPipeServerProcessId path breaks). Clone data IPC therefore
+//! uses plain named pipes addressed by name — no handle passing.
 // =================================================================================================
 use crate::sys::ProcessId;
 use std::ffi::c_void;
+use std::ptr;
 // =================================================================================================
 
-type Handle = *mut c_void;
+pub type Handle = *mut c_void;
 
 const ProcessTerminate: u32 = 0x0001;
 const Synchronize: u32 = 0x0010_0000;
 const Infinite: u32 = 0xFFFF_FFFF;
-const SilentErrorMode: u32 = 0x0001 | 0x0002 | 0x8000; // SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX
-const ModuleHandleFromAddress: u32 = 0x0002 | 0x0004; // GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT | ..._FROM_ADDRESS
+const SilentErrorMode: u32 = 0x0001 | 0x0002 | 0x8000;
+const ModuleHandleFromAddress: u32 = 0x0002 | 0x0004;
+
+const PIPE_ACCESS_DUPLEX: u32 = 0x00000003;
+const PIPE_TYPE_BYTE: u32 = 0x00000000;
+const PIPE_WAIT: u32 = 0x00000000;
+const PIPE_READMODE_BYTE: u32 = 0x00000000;
+const GENERIC_READ: u32 = 0x80000000;
+const GENERIC_WRITE: u32 = 0x40000000;
+const OPEN_EXISTING: u32 = 3;
+const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+
+pub const STATUS_PROCESS_CLONED: i32 = 0x00000129;
+
+#[repr(C)]
+pub struct CLIENT_ID {
+  pub UniqueProcess: *mut c_void,
+  pub UniqueThread: *mut c_void,
+}
+
+#[repr(C)]
+pub struct SECTION_IMAGE_INFORMATION {
+  pub TransferAddress: *mut c_void,
+  pub ZeroBits: usize,
+  pub MaximumStackSize: usize,
+  pub CommittedStackSize: usize,
+  pub SubSystemType: u32,
+  pub SubSystemVersion: u32,
+  pub GpValue: u32,
+  pub ImageCharacteristics: u16,
+  pub DllCharacteristics: u16,
+  pub Machine: u16,
+  pub ImageContainsCode: u8,
+  pub ImageFlags: u8,
+  pub LoaderFlags: u32,
+  pub ImageFileSize: u32,
+  pub CheckSum: u32,
+}
+
+#[repr(C)]
+pub struct RTL_USER_PROCESS_INFORMATION {
+  pub Length: u32,
+  pub ProcessHandle: Handle,
+  pub ThreadHandle: Handle,
+  pub ClientId: CLIENT_ID,
+  pub ImageInformation: SECTION_IMAGE_INFORMATION,
+}
 
 #[link(name = "kernel32")]
-unsafe extern "system"
-{
+unsafe extern "system" {
   fn OpenProcess(desiredAccess: u32, inheritHandle: i32, processId: u32) -> Handle;
   fn TerminateProcess(process: Handle, exitCode: u32) -> i32;
   fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
@@ -26,143 +72,406 @@ unsafe extern "system"
   fn GetLastError() -> u32;
   fn SetErrorMode(mode: u32) -> u32;
   fn GetModuleHandleExW(flags: u32, moduleName: *const u16, module: *mut Handle) -> i32;
+  fn FreeConsole() -> i32;
+  fn AttachConsole(dwProcessId: u32) -> i32;
+  fn GetCurrentProcessId() -> u32;
+  fn CreateNamedPipeW(
+    lpName: *const u16,
+    dwOpenMode: u32,
+    dwPipeMode: u32,
+    nMaxInstances: u32,
+    nOutBufferSize: u32,
+    nInBufferSize: u32,
+    nDefaultTimeOut: u32,
+    lpSecurityAttributes: *mut c_void,
+  ) -> Handle;
+  fn ConnectNamedPipe(hNamedPipe: Handle, lpOverlapped: *mut c_void) -> i32;
+  fn CreateFileW(
+    lpFileName: *const u16,
+    dwDesiredAccess: u32,
+    dwShareMode: u32,
+    lpSecurityAttributes: *mut c_void,
+    dwCreationDisposition: u32,
+    dwFlagsAndAttributes: u32,
+    hTemplateFile: Handle,
+  ) -> Handle;
+  fn ReadFile(
+    hFile: Handle,
+    lpBuffer: *mut u8,
+    nNumberOfBytesToRead: u32,
+    lpNumberOfBytesRead: *mut u32,
+    lpOverlapped: *mut c_void,
+  ) -> i32;
+  fn WriteFile(
+    hFile: Handle,
+    lpBuffer: *const u8,
+    nNumberOfBytesToWrite: u32,
+    lpNumberOfBytesWritten: *mut u32,
+    lpOverlapped: *mut c_void,
+  ) -> i32;
+  fn SetNamedPipeHandleState(
+    hNamedPipe: Handle,
+    lpMode: *mut u32,
+    lpMaxCollectionCount: *mut u32,
+    lpCollectDataTimeout: *mut u32,
+  ) -> i32;
 }
 
-unsafe extern "C"
-{
+#[link(name = "ntdll")]
+unsafe extern "system" {
+  fn RtlCloneUserProcess(
+    ProcessFlags: u32,
+    ProcessSecurityDescriptor: *mut c_void,
+    ThreadSecurityDescriptor: *mut c_void,
+    DebugPort: Handle,
+    ProcessInformation: *mut RTL_USER_PROCESS_INFORMATION,
+  ) -> i32;
+}
+
+unsafe extern "C" {
   fn _errno() -> *mut i32;
 }
 
 // =================================================================================================
 
-/// No-op: Windows has neither SIGCHLD nor zombie processes.
 pub const fn ignoreChildExits() -> () {}
 
-/// A clone is a crash domain, not a cooperating peer — kill it outright.
 pub fn killProcess(pid: ProcessId) -> ()
 {
-  let process: Handle = unsafe{ OpenProcess(ProcessTerminate, 0, pid) };
-  if process.is_null() { return; }
-
-  unsafe{ TerminateProcess(process, 1) };
-  unsafe{ CloseHandle(process) };
+  let process: Handle = unsafe { OpenProcess(ProcessTerminate, 0, pid) };
+  if process.is_null() {
+    return;
+  }
+  unsafe { TerminateProcess(process, 1) };
+  unsafe { CloseHandle(process) };
 }
 
-/// Blocks until the process terminates.
 pub fn waitProcess(pid: ProcessId) -> ()
 {
-  let process: Handle = unsafe{ OpenProcess(Synchronize, 0, pid) };
-  if process.is_null() { return; }
-
-  unsafe{ WaitForSingleObject(process, Infinite) };
-  unsafe{ CloseHandle(process) };
+  let process: Handle = unsafe { OpenProcess(Synchronize, 0, pid) };
+  if process.is_null() {
+    return;
+  }
+  unsafe { WaitForSingleObject(process, Infinite) };
+  unsafe { CloseHandle(process) };
 }
 
-/// Disables Windows Error Reporting for the calling process. Called once at
-/// clone startup — a crash must kill the clone immediately, not open a WER
-/// dialog the Runtime would sit blocked waiting on.
 pub fn silenceCrashReporting() -> ()
 {
-  unsafe{ SetErrorMode(SilentErrorMode) };
+  unsafe { SetErrorMode(SilentErrorMode) };
+}
+
+pub fn reattachConsole() -> ()
+{
+  unsafe {
+    FreeConsole();
+    AttachConsole(0xFFFF_FFFF);
+  }
+}
+
+pub fn currentProcessId() -> u32
+{
+  unsafe { GetCurrentProcessId() }
+}
+
+pub fn closeHandle(h: Handle) -> ()
+{
+  if !h.is_null() && h as isize != -1 {
+    unsafe { CloseHandle(h) };
+  }
 }
 
 // =================================================================================================
 
-/// Base load address of the module containing this function.
+pub struct CloneResult {
+  pub pid: ProcessId,
+  pub process_handle: Handle,
+  pub thread_handle: Handle,
+}
+
+pub fn cloneProcess() -> Result<CloneResult, i32>
+{
+  let mut info: RTL_USER_PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+  info.Length = std::mem::size_of::<RTL_USER_PROCESS_INFORMATION>() as u32;
+
+  // No INHERIT_HANDLES — keeps Runtime↔Zygote control pipes intact.
+  // No CREATE_SUSPENDED — some Win32/CSRSS init paths (filesystem APIs like
+  // _stat64) are incomplete when the clone starts suspended and is resumed
+  // later; ERROR_BROKEN_PIPE (109) on the data pipe was the symptom.
+  let flags = 0u32;
+
+  let status = unsafe {
+    RtlCloneUserProcess(
+      flags,
+      ptr::null_mut(),
+      ptr::null_mut(),
+      ptr::null_mut(),
+      &mut info,
+    )
+  };
+
+  if status == STATUS_PROCESS_CLONED {
+    return Err(STATUS_PROCESS_CLONED);
+  }
+  if status < 0 {
+    return Err(status);
+  }
+
+  Ok(CloneResult {
+    pid: info.ClientId.UniqueProcess as u32,
+    process_handle: info.ProcessHandle,
+    thread_handle: info.ThreadHandle,
+  })
+}
+
+
+pub fn closeCloneHandles(result: &CloneResult) -> ()
+{
+  closeHandle(result.process_handle);
+  closeHandle(result.thread_handle);
+}
+
+// =================================================================================================
+// Named-pipe framed channel (length-prefixed messages). No handle passing.
+// =================================================================================================
+
+fn toWide(s: &str) -> Vec<u16>
+{
+  s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Unique pipe path for clone data IPC (one duplex pipe per clone).
+pub fn cloneDataPipeName(clonePid: u32) -> String
+{
+  format!(r"\\.\pipe\chillffi-data-{}", clonePid)
+}
+
+/// Child side: create a duplex named-pipe server (does not wait for client yet).
+pub fn createPipeServer(name: &str) -> Option<Handle>
+{
+  let wide = toWide(name);
+  let h = unsafe {
+    CreateNamedPipeW(
+      wide.as_ptr(),
+      PIPE_ACCESS_DUPLEX,
+      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+      1,
+      64 * 1024,
+      64 * 1024,
+      5000,
+      ptr::null_mut(),
+    )
+  };
+  if h.is_null() || h as isize == -1 {
+    return None;
+  }
+  Some(h)
+}
+
+/// Block until a client connects to a pipe created with [`createPipeServer`].
+pub fn acceptPipeClient(h: Handle) -> bool
+{
+  let ok = unsafe { ConnectNamedPipe(h, ptr::null_mut()) };
+  if ok == 0 {
+    let err = unsafe { GetLastError() };
+    // ERROR_PIPE_CONNECTED == 535
+    return err == 535;
+  }
+  true
+}
+
+/// Parent/Runtime side: connect to an existing named-pipe server.
+pub fn connectPipeClient(name: &str) -> Option<Handle>
+{
+  let wide = toWide(name);
+  // Retry a few times — child may still be creating the server.
+  for _ in 0..50 {
+    let h = unsafe {
+      CreateFileW(
+        wide.as_ptr(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        ptr::null_mut(),
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        ptr::null_mut(),
+      )
+    };
+    if !h.is_null() && h as isize != -1 {
+      // Ensure byte mode on the client end (matches server PIPE_READMODE_BYTE).
+      let mut mode: u32 = PIPE_READMODE_BYTE;
+      unsafe {
+        SetNamedPipeHandleState(h, &mut mode, ptr::null_mut(), ptr::null_mut());
+      }
+      return Some(h);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(10));
+  }
+  None
+}
+
+fn writeAll(h: Handle, buf: &[u8]) -> bool
+{
+  // Empty payload is valid (e.g. length prefix of a zero-byte body).
+  if buf.is_empty() {
+    return true;
+  }
+  let mut off = 0;
+  while off < buf.len() {
+    let mut written: u32 = 0;
+    let ok = unsafe {
+      WriteFile(
+        h,
+        buf[off..].as_ptr(),
+        (buf.len() - off) as u32,
+        &mut written,
+        ptr::null_mut(),
+      )
+    };
+    if ok == 0 || written == 0 {
+      return false;
+    }
+    off += written as usize;
+  }
+  // Do NOT FlushFileBuffers on named pipes: it can block until the peer
+  // reads, and with request/response on two pipes that risks deadlock.
+  true
+}
+
+fn readExact(h: Handle, buf: &mut [u8]) -> bool
+{
+  let mut off = 0;
+  while off < buf.len() {
+    let mut read: u32 = 0;
+    let ok = unsafe {
+      ReadFile(
+        h,
+        buf[off..].as_mut_ptr(),
+        (buf.len() - off) as u32,
+        &mut read,
+        ptr::null_mut(),
+      )
+    };
+    if ok == 0 || read == 0 {
+      return false;
+    }
+    off += read as usize;
+  }
+  true
+}
+
+/// Send a length-prefixed payload (u32 LE length + bytes) in **one** WriteFile
+/// sequence so the peer never observes a torn frame.
+pub fn pipeSend(h: Handle, payload: &[u8]) -> bool
+{
+  if payload.len() > u32::MAX as usize {
+    return false;
+  }
+  let mut msg = Vec::with_capacity(4 + payload.len());
+  msg.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+  msg.extend_from_slice(payload);
+  writeAll(h, &msg)
+}
+
+/// Receive a length-prefixed payload.
+/// On failure returns None; call [`lastPipeError`] for the Win32 code.
+pub fn pipeRecv(h: Handle) -> Option<Vec<u8>>
+{
+  let mut lenBuf = [0u8; 4];
+  if !readExact(h, &mut lenBuf) {
+    return None;
+  }
+  let len = u32::from_le_bytes(lenBuf) as usize;
+  // Sanity cap: 16 MiB
+  if len > 16 * 1024 * 1024 {
+    return None;
+  }
+  let mut buf = vec![0u8; len];
+  if len > 0 && !readExact(h, &mut buf) {
+    return None;
+  }
+  Some(buf)
+}
+
+/// Last `GetLastError` after a failed pipe op (best-effort).
+pub fn lastPipeError() -> u32
+{
+  unsafe { GetLastError() }
+}
+
+// =================================================================================================
+
 pub fn moduleBase() -> usize
 {
-  let mut module: Handle = std::ptr::null_mut();
-  let found: i32 = unsafe{
+  let mut module: Handle = ptr::null_mut();
+  let found = unsafe {
     GetModuleHandleExW(
       ModuleHandleFromAddress,
       moduleBase as *const () as *const u16,
-      &mut module
+      &mut module,
     )
   };
-  if found == 0 { return 0; }
-
+  if found == 0 {
+    return 0;
+  }
   module as usize
 }
 
-// =================================================================================================
-
-/// Reads `errno` of the calling thread. Per-CRT-instance, not per-process:
-/// a library statically linked against its own CRT keeps its own copy.
 pub fn readErrno() -> i32
 {
-  unsafe{ *_errno() }
+  unsafe { *_errno() }
 }
 
-/// `GetLastError` of the calling thread, captured alongside [`readErrno`].
-/// Most Win32 functions report failure here, not through `errno`.
 pub fn readOsError() -> Option<u32>
 {
-  Some(unsafe{ GetLastError() })
+  Some(unsafe { GetLastError() })
 }
 
 // =================================================================================================
 
-/// Alignment plain `malloc` already guarantees on this CRT (`2 *
-/// sizeof(void*)`: 16 bytes on x64, 8 on x86 — matches `max_align_t`).
 const MallocAlignment: usize = crate::sys::MinAlignment * 2;
 
 thread_local! {
-  /// Pointers handed out via `_aligned_malloc`, which need `_aligned_free`
-  /// rather than plain `free`. A clone serves one request at a time (see
-  /// `cloneLoop`), so thread-local bookkeeping is enough — no locking needed.
   static AlignedAllocations: std::cell::RefCell<std::collections::HashSet<usize>> =
     std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
-/// Plain `malloc`. Must stay plain: `Scope::free` also has to release
-/// pointers from arbitrary C-side allocators (e.g. a `malloc` called
-/// through FFI directly), and those are never in [`AlignedAllocations`].
 pub fn allocate(length: usize) -> *mut c_void
 {
-  unsafe{ libc::malloc(length) }
+  unsafe { libc::malloc(length) }
 }
 
-/// Plain `malloc` already satisfies alignment up to [`MallocAlignment`];
-/// only larger requests need `_aligned_malloc`, tracked in
-/// [`AlignedAllocations`] so [`deallocate`] knows to release it with
-/// `_aligned_free` instead of `free`.
 pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
-  if alignment <= MallocAlignment
-  {
-    let pointer: *mut c_void = unsafe{ libc::malloc(length) };
-    if pointer.is_null()
-    {
+  if alignment <= MallocAlignment {
+    let pointer = unsafe { libc::malloc(length) };
+    if pointer.is_null() {
       return Err(format!("malloc failed for {} bytes", length));
     }
     return Ok(pointer);
   }
 
-  let pointer: *mut c_void = unsafe{ libc::aligned_malloc(length, alignment) };
-  if pointer.is_null()
-  {
+  let pointer = unsafe { libc::aligned_malloc(length, alignment) };
+  if pointer.is_null() {
     return Err(format!(
-      "_aligned_malloc failed for {} bytes at alignment {}", length, alignment
+      "_aligned_malloc failed for {} bytes at alignment {}",
+      length, alignment
     ));
   }
-  AlignedAllocations.with(|set| { set.borrow_mut().insert(pointer as usize); });
+  AlignedAllocations.with(|set| {
+    set.borrow_mut().insert(pointer as usize);
+  });
   Ok(pointer)
 }
 
-/// `free`, unless `pointer` is a tracked `_aligned_malloc` result, in which
-/// case `_aligned_free` — the two are not interchangeable on Windows.
 pub fn deallocate(pointer: *mut c_void) -> ()
 {
-  let wasAligned: bool =
+  let wasAligned =
     AlignedAllocations.with(|set| set.borrow_mut().remove(&(pointer as usize)));
-
-  if wasAligned
-  {
-    unsafe{ libc::aligned_free(pointer) };
-  }
-  else
-  {
-    unsafe{ libc::free(pointer) };
+  if wasAligned {
+    unsafe { libc::aligned_free(pointer) };
+  } else {
+    unsafe { libc::free(pointer) };
   }
 }
 
