@@ -515,16 +515,18 @@ static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
 
 /// Look up a single symbol in the current process via dbghelp. Returns the
 /// VA (not RVA) of the symbol on success.
-unsafe fn lookupSymbol(process: Handle, sym: &[u8]) -> Option<u64>
+unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64>
 {
-  let mut info: SYMBOL_INFO = unsafe { std::mem::zeroed() };
-  info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
-  info.MaxNameLen = 2000;
-  let ok = unsafe { SymFromName(process, sym.as_ptr() as *const i8, &mut info) };
-  if ok == 0 {
-    return None;
+  for name in names {
+    let mut info: SYMBOL_INFO = unsafe { std::mem::zeroed() };
+    info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
+    info.MaxNameLen = 2000;
+    let ok = unsafe { SymFromName(process, name.as_ptr(), &mut info) };
+    if ok != 0 {
+      return Some(info.Address);
+    }
   }
-  Some(info.Address)
+  None
 }
 
 /// Resolve the CSR data block in ntdll + the CtrlRoutine entry in
@@ -558,24 +560,59 @@ pub fn resolveCsrPortHandle() -> ()
       return None;
     }
 
-    let csrBegin = lookupSymbol(process, b"ntdll!CsrServerApiRoutine\0");
-    let csrEnd = lookupSymbol(process, b"ntdll!RtlpEnvironLookupTable\0");
+    let csrBegin = lookupSymbol(process, &[
+      c"ntdll!CsrServerApiRoutine",
+      c"CsrServerApiRoutine",
+      c"_CsrServerApiRoutine",
+    ]);
+    let csrEnd = lookupSymbol(process, &[
+      c"ntdll!RtlpEnvironLookupTable",
+      c"RtlpEnvironLookupTable",
+      c"_RtlpEnvironLookupTable",
+    ]);
+    // Fallback end marker: RtlpCurDirRef sits immediately before
+    // RtlpEnvironLookupTable in ntdll's .data. It is a qword itself, so
+    // the block end is (RtlpCurDirRef + 8).
+    let csrEndFallback = if csrEnd.is_none() {
+      lookupSymbol(process, &[
+        c"ntdll!RtlpCurDirRef",
+        c"RtlpCurDirRef",
+        c"_RtlpCurDirRef",
+      ])
+    } else {
+      None
+    };
     SymCleanup(process);
 
-    let (Some(begin), Some(end)) = (csrBegin, csrEnd) else {
-      eprintln!(
-        "[csr] symbol lookup failed: CsrServerApiRoutine={:?} RtlpEnvironLookupTable={:?}",
-        csrBegin, csrEnd
-      );
+    let Some(begin) = csrBegin else {
+      eprintln!("[csr] symbol lookup failed: CsrServerApiRoutine not found");
       return None;
     };
-    if end <= begin {
+
+    let (size, via) = if let Some(e) = csrEnd {
+      if e <= begin {
+        eprintln!(
+          "[csr] unexpected symbol order: begin={:#x} end={:#x}",
+          begin, e
+        );
+        return None;
+      }
+      ((e - begin) as usize, "via symbol")
+    } else if let Some(f) = csrEndFallback {
+      if f <= begin {
+        eprintln!(
+          "[csr] unexpected fallback symbol order: begin={:#x} fallback={:#x}",
+          begin, f
+        );
+        return None;
+      }
+      (((f - begin) + 8) as usize, "via symbol")
+    } else {
       eprintln!(
-        "[csr] unexpected symbol order: begin={:#x} end={:#x}",
-        begin, end
+        "[csr] RtlpEnvironLookupTable/RtlpCurDirRef not found, using hardcoded fallback size 128"
       );
-      return None;
-    }
+      (128usize, "via fallback")
+    };
 
     // kernelbase!CtrlRoutine — passed as BASESRV ConnectionInfo. If not
     // found, fall back to NULL (some Win10 builds expose it under a
@@ -588,15 +625,16 @@ pub fn resolveCsrPortHandle() -> ()
     };
 
     eprintln!(
-      "[csr] resolved block: base={:#x} size={} ctrl_routine={:p}",
+      "[csr] resolved block: base={:#x} size={} ({}) ctrl_routine={:p}",
       begin,
-      (end - begin) as usize,
+      size,
+      via,
       ctrlRoutine
     );
 
     Some(CsrDataBlock {
       base: begin as usize,
-      size: (end - begin) as usize,
+      size,
       ctrl_routine: ctrlRoutine as usize,
     })
   });
