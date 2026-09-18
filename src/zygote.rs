@@ -503,10 +503,11 @@ fn zygoteLoop(serverName: String) -> !
   // and with SIG_IGN it will fail with ECHILD and enter guaranteed CPU load.
   sys::ignoreChildExits(); // no-op on Windows: no SIGCHLD, no zombies
 
-  // Resolve `ntdll!CsrPortHandle` once, in the healthy zygote, BEFORE any
-  // clone is spawned. Children inherit the cached address via CoW and use
-  // it in `reconnectCsr()` to NULL the stale handle and re-establish the
-  // CSR connection. No-op on Unix.
+  // Resolve the ntdll CSR data block [CsrServerApiRoutine .. RtlpEnvironLookupTable)
+  // and kernelbase!CtrlRoutine once, in the healthy zygote, BEFORE any clone is
+  // spawned. Children inherit the cached addresses via CoW and use them in
+  // `reconnectCsr()` to zero the stale block, call CsrClientConnectToServer for
+  // BASESRV + USERSRV, and RtlRegisterThreadWithCsrss. No-op on Unix.
   #[cfg(windows)]
   sys::resolveCsrPortHandle();
 
@@ -593,29 +594,34 @@ fn zygoteLoop(serverName: String) -> !
           let spawned: Option<u32> = match sys::cloneProcess()
           {
             Ok(result) =>
-            {
-              let pid = result.pid;
-              // Thread already running (no CREATE_SUSPENDED).
-              sys::closeCloneHandles(&result);
-              Some(pid)
-            }
+              {
+                let pid = result.pid;
+                // Thread already running (no CREATE_SUSPENDED).
+                sys::closeCloneHandles(&result);
+                Some(pid)
+              }
             Err(sys::STATUS_PROCESS_CLONED) =>
-            {
-              std::mem::forget(cloneServer);
-              std::mem::forget(commandRx);
-              std::mem::forget(replyTx);
-              // We are the clone. The inherited CsrPortHandle points at a
-              // stale CSR context — re-establish it before any Win32/basesrv
-              // call (reattachConsole, _stat64 in handleRequest, etc.) or
-              // those calls will AV and we die with ERROR_BROKEN_PIPE on the
-              // data pipe. Best-effort: if symbols were never resolved, we
-              // proceed anyway — same failure mode as before this fix.
-              let csrOk = sys::reconnectCsr();
-              eprintln!("[child] reconnectCsr={}", csrOk);
-              sys::reattachConsole();
-              sys::silenceCrashReporting();
-              cloneBootstrapLoop(cloneServerName)
-            }
+              {
+                std::mem::forget(cloneServer);
+                std::mem::forget(commandRx);
+                std::mem::forget(replyTx);
+                // We are the clone. The inherited ntdll CSR data block
+                // (CsrPortHandle, CsrInitOnceDone, CsrPortHeap, CsrHeap, ...)
+                // references the parent's CSR_PROCESS on the csrss.exe side.
+                // Any Win32/basesrv call (reattachConsole, _stat64 in
+                // handleRequest, etc.) AVs and we die with ERROR_BROKEN_PIPE
+                // (109) on the data pipe. reconnectCsr() zeroes the whole
+                // block, calls CsrClientConnectToServer for BASESRV + USERSRV
+                // against \Sessions\{sid}\Windows, and registers the current
+                // thread with RtlRegisterThreadWithCsrss. Best-effort: if
+                // symbols were never resolved, we proceed anyway — same
+                // failure mode as before this fix.
+                let csrOk = sys::reconnectCsr();
+                eprintln!("[child] reconnectCsr={}", csrOk);
+                sys::reattachConsole();
+                sys::silenceCrashReporting();
+                cloneBootstrapLoop(cloneServerName)
+              }
             Err(_) => None
           };
 

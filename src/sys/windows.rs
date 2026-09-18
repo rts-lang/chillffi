@@ -94,9 +94,12 @@ unsafe extern "system" {
   fn GetLastError() -> u32;
   fn SetErrorMode(mode: u32) -> u32;
   fn GetModuleHandleExW(flags: u32, moduleName: *const u16, module: *mut Handle) -> i32;
+  fn GetModuleHandleA(moduleName: *const u8) -> Handle;
+  fn GetProcAddress(module: Handle, name: *const u8) -> *mut c_void;
   fn FreeConsole() -> i32;
   fn AttachConsole(dwProcessId: u32) -> i32;
   fn GetCurrentProcessId() -> u32;
+  fn ProcessIdToSessionId(processId: u32, sessionId: *mut u32) -> i32;
   fn CreateNamedPipeW(
     lpName: *const u16,
     dwOpenMode: u32,
@@ -156,18 +159,28 @@ unsafe extern "system" {
     DebugPort: Handle,
     ProcessInformation: *mut RTL_USER_PROCESS_INFORMATION,
   ) -> i32;
-  // Undocumented. No-op if CsrPortHandle is non-NULL — that is exactly the
-  // situation in a RtlCloneUserProcess clone, where the handle value (and the
-  // CSR_PROCESS state on the csrss.exe side) is inherited stale from parent.
-  // Signature reconstructed from ReactOS CsrClientConnectToServer; verify
-  // against a real LdrpInitializeProcess disassembly if status < 0.
+  // Undocumented. Re-establishes the ALPC connection to csrss.exe. Lazy: if
+  // CsrInitOnceDone is already set (which is always the case in a CoW clone,
+  // because the parent already went through CsrpConnectToServer), the call
+  // becomes a no-op. The whole CSR data block must be zeroed first.
+  //
+  // NOTE on the signature: ReactOS documents ConnectionInfoLength as a
+  // PULONG (in-out), but on Win10 1809+ Microsoft reshaped the API so that
+  // it is a plain ULONG value. We follow the Win10/11 shape used by WINNIE
+  // (NDSS'21, forklib/fork.cpp), cross-checked by reverse-engineering
+  // ntdll!CsrClientConnectToServer.
   fn CsrClientConnectToServer(
     ObjectDirectory: *const u16,
     ServerId: u32,
     ConnectionInfo: *mut c_void,
-    ConnectionInfoLength: *mut u32,
+    ConnectionInfoLength: u32,
     CalledFromServer: *mut u8,
   ) -> i32;
+  // Undocumented. Registers the current thread with CSRSS (CSR_THREAD
+  // allocation on the csrss.exe side). Without it, the first Win32 call
+  // that does CsrClientCallServer can blow up because the thread is unknown
+  // to the subsystem.
+  fn RtlRegisterThreadWithCsrss() -> i32;
 }
 
 unsafe extern "C" {
@@ -442,33 +455,85 @@ pub fn lastPipeError() -> u32
 }
 
 // =================================================================================================
-// CSRSS reconnect (undocumented). CsrPortHandle survives a CoW clone as a
-// stale value — the lazy-connect guard inside CsrClientConnectToServer
-// treats the port as live and does not re-establish the connection. As a
-// result, Win32 calls that route through CSR / basesrv (e.g. _stat64,
-// activation-context APIs, parts of the loader) AV or abort, surfacing as
-// ERROR_BROKEN_PIPE (109) on the data pipe. ucrt-only paths (math, string)
-// keep working because they never touch CSR.
+// CSRSS reconnect (undocumented).
 //
-// Strategy:
-//   1. In the healthy main zygote, BEFORE the first clone, resolve the
-//      address of `ntdll!CsrPortHandle` via dbghelp / symbol server.
-//      The address is cached in a static OnceLock; children inherit it
-//      through CoW for free.
-//   2. In a freshly cloned child, NULL out the stale handle and call
-//      CsrClientConnectToServer again, so ntdll re-establishes a real
-//      connection to csrss.exe for this PID.
+// After RtlCloneUserProcess the child inherits the parent's CSR data block
+// in ntdll.dll verbatim:
+//
+//   CsrServerApiRoutine, CsrClientProcess, CsrInitOnceDone, CsrPortName,
+//   CsrProcessId, CsrReadOnlySharedMemorySize, CsrPortMemoryRemoteDelta,
+//   CsrPortHandle, CsrPortHeap, CsrPortBaseTag, CsrHeap, RtlpCurDirRef,
+//   ... up to RtlpEnvironLookupTable.
+//
+// Because `CsrInitOnceDone` is already 1, CsrClientConnectToServer bails
+// out immediately (lazy-init guard). The handle/heap/ports are stale (they
+// reference the parent's CSR_PROCESS on the csrss.exe side). Any Win32 call
+// that does CsrClientCallServer (file APIs, _stat64, activation contexts,
+// console, etc.) then crashes the clone — observed as ERROR_BROKEN_PIPE
+// (109) on the data pipe. ucrt-only paths (math, string) keep working
+// because they never touch CSR.
+//
+// Fix (cross-checked against WINNIE, NDSS'21, forklib/fork.cpp):
+//   1. Resolve the address range [CsrServerApiRoutine .. RtlpEnvironLookupTable)
+//      in the healthy zygote, BEFORE the first clone. The address is cached
+//      in a static OnceLock; children inherit it through CoW for free.
+//   2. In the clone: zero out the whole block — not just CsrPortHandle — so
+//      CsrInitOnceDone goes back to 0 and CsrClientConnectToServer will run.
+//   3. Call CsrClientConnectToServer TWICE:
+//        a) BASESRV  (ServerId=1), ConnectionInfo = &kernelbase!CtrlRoutine,
+//           ConnectionInfoLength = 8.
+//        b) USERSRV  (ServerId=3), ConnectionInfo = zeroed 0x240-byte buffer,
+//           ConnectionInfoLength = 0x240.
+//      ObjectDirectory MUST be `\Sessions\{sid}\Windows`, not `\Windows`
+//      (the latter resolves to session 0 = services).
+//   4. Call RtlRegisterThreadWithCsrss so the new thread is registered with
+//      the subsystem. Without it, the first CsrClientCallServer can AV
+//      because the TID is not in the CSR_THREAD table.
+//
+// Notes:
+//   - NotifyCsrssParent (CsrClientCallServer with BasepCreateProcess from
+//     the parent) is optional per WINNIE — the child works without it.
+//   - Hardcoded offsets are NOT used: we resolve two RVAs via dbghelp at
+//     zygote startup so the same binary works across Win10/Win11 builds.
+//   - The first resolve pulls ntdll.pdb from msdl (or _NT_SYMBOL_PATH if
+//     set). In air-gapped CI, pre-populate the symbol cache.
 // =================================================================================================
 
-static CsrPortHandleAddress: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+#[derive(Clone, Copy)]
+struct CsrDataBlock {
+  base: usize,
+  size: usize,
+  // kernelbase!CtrlRoutine address (passed as BASESRV ConnectionInfo).
+  // Stored as `usize` so the struct is Send + Sync — raw pointers are
+  // neither. The address is read once from dbghelp and only ever
+  // dereferenced inside `unsafe` blocks in `reconnectCsr`.
+  ctrl_routine: usize,
+}
 
-/// Resolve `ntdll!CsrPortHandle` once, in the healthy main zygote, before
-/// any clone is spawned. Safe to call multiple times — the second call is a
-/// no-op. Stores 0 on failure (no network / no symbols); `reconnectCsr`
-/// then returns `false` and the clone falls back to the broken-port path.
+static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
+  std::sync::OnceLock::new();
+
+/// Look up a single symbol in the current process via dbghelp. Returns the
+/// VA (not RVA) of the symbol on success.
+unsafe fn lookupSymbol(process: Handle, sym: &[u8]) -> Option<u64>
+{
+  let mut info: SYMBOL_INFO = unsafe { std::mem::zeroed() };
+  info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
+  info.MaxNameLen = 2000;
+  let ok = unsafe { SymFromName(process, sym.as_ptr() as *const i8, &mut info) };
+  if ok == 0 {
+    return None;
+  }
+  Some(info.Address)
+}
+
+/// Resolve the CSR data block in ntdll + the CtrlRoutine entry in
+/// kernelbase. Idempotent. Safe to call multiple times. Stores `None` on
+/// failure (no network / no symbols); `reconnectCsr` then returns `false`
+/// and the clone falls back to the broken-port path.
 pub fn resolveCsrPortHandle() -> ()
 {
-  CsrPortHandleAddress.get_or_init(|| unsafe {
+  CsrDataBlockAddress.get_or_init(|| unsafe {
     let process: Handle = GetCurrentProcess();
 
     // If _NT_SYMBOL_PATH is already set, let dbghelp read it; otherwise
@@ -489,49 +554,150 @@ pub fn resolveCsrPortHandle() -> ()
     let searchPathPtr = searchPath.as_ref().map_or(std::ptr::null(), |v| v.as_ptr());
 
     if SymInitializeW(process, searchPathPtr, 1) == 0 {
-      return 0;
+      eprintln!("[csr] SymInitializeW failed: {}", GetLastError());
+      return None;
     }
 
-    let mut info: SYMBOL_INFO = std::mem::zeroed();
-    info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) without Name, x64
-    info.MaxNameLen = 2000;
-
-    let name = b"ntdll!CsrPortHandle\0";
-    let found = SymFromName(process, name.as_ptr() as *const i8, &mut info) != 0;
+    let csrBegin = lookupSymbol(process, b"ntdll!CsrServerApiRoutine\0");
+    let csrEnd = lookupSymbol(process, b"ntdll!RtlpEnvironLookupTable\0");
     SymCleanup(process);
 
-    if found { info.Address as usize } else { 0 }
+    let (Some(begin), Some(end)) = (csrBegin, csrEnd) else {
+      eprintln!(
+        "[csr] symbol lookup failed: CsrServerApiRoutine={:?} RtlpEnvironLookupTable={:?}",
+        csrBegin, csrEnd
+      );
+      return None;
+    };
+    if end <= begin {
+      eprintln!(
+        "[csr] unexpected symbol order: begin={:#x} end={:#x}",
+        begin, end
+      );
+      return None;
+    }
+
+    // kernelbase!CtrlRoutine — passed as BASESRV ConnectionInfo. If not
+    // found, fall back to NULL (some Win10 builds expose it under a
+    // different name; BASESRV is tolerant of a NULL pointer).
+    let kernelbase = GetModuleHandleA(c"kernelbase.dll".as_ptr().cast());
+    let ctrlRoutine = if !kernelbase.is_null() {
+      GetProcAddress(kernelbase, c"CtrlRoutine".as_ptr().cast())
+    } else {
+      std::ptr::null_mut()
+    };
+
+    eprintln!(
+      "[csr] resolved block: base={:#x} size={} ctrl_routine={:p}",
+      begin,
+      (end - begin) as usize,
+      ctrlRoutine
+    );
+
+    Some(CsrDataBlock {
+      base: begin as usize,
+      size: (end - begin) as usize,
+      ctrl_routine: ctrlRoutine as usize,
+    })
   });
 }
 
-/// Child-side: NULL the stale CsrPortHandle and re-run CsrClientConnectToServer
-/// against `\Windows` so ntdll opens a fresh ALPC connection to csrss.exe for
-/// this cloned PID.
+/// Child-side: zero the stale CSR data block, then re-run
+/// CsrClientConnectToServer for BASESRV (ServerId=1) and USERSRV
+/// (ServerId=3) against `\Sessions\{sid}\Windows`, and finally
+/// RtlRegisterThreadWithCsrss.
 ///
-/// Returns `true` on success, `false` if the address was never resolved
-/// (resolveCsrPortHandle failed in the main zygote) or the reconnect call
-/// returned a negative NTSTATUS.
+/// Returns `true` only if every step succeeded. The caller should still
+/// proceed even on `false` — the failure mode is the same as without this
+/// fix (ERROR_BROKEN_PIPE on the data pipe), but logging the exact step
+/// that failed helps diagnosing version-specific issues.
 pub fn reconnectCsr() -> bool
 {
-  let address = match CsrPortHandleAddress.get() {
-    Some(&a) if a != 0 => a,
-    _ => return false,
+  let block = match CsrDataBlockAddress.get() {
+    Some(Some(b)) => *b,
+    _ => {
+      eprintln!("[csr] reconnectCsr: block was never resolved");
+      return false;
+    }
   };
 
+  // Step 1: zero the entire CSR data block so CsrInitOnceDone goes back to 0.
   unsafe {
-    *(address as *mut Handle) = std::ptr::null_mut();
+    std::ptr::write_bytes(block.base as *mut u8, 0, block.size);
+  }
 
-    let objectDirectory: Vec<u16> = "\\Windows\0".encode_utf16().collect();
-    let mut calledFromServer: u8 = 0;
-    let status = CsrClientConnectToServer(
+  // Step 2: build the per-session object directory `\Sessions\{sid}\Windows`.
+  // CSRSS is session-local; using `\Windows` connects to session 0 (services)
+  // and any subsequent Win32 call in an interactive session will fail.
+  let mut sessionId: u32 = 0;
+  if unsafe { ProcessIdToSessionId(currentProcessId(), &mut sessionId) } == 0 {
+    eprintln!(
+      "[csr] ProcessIdToSessionId failed: {}",
+      unsafe { GetLastError() }
+    );
+    return false;
+  }
+  let objectDirectory: Vec<u16> =
+    format!("\\Sessions\\{}\\Windows\0", sessionId)
+      .encode_utf16()
+      .collect();
+
+  // Step 3a: connect to BASESRV (ServerId=1). ConnectionInfo is the address
+  // of kernelbase!CtrlRoutine (8 bytes on x64) — passed verbatim, no capture
+  // buffer.
+  let mut baseSrvInfo: *mut c_void = block.ctrl_routine as *mut c_void;
+  let mut calledFromServer: u8 = 0;
+  let status1 = unsafe {
+    CsrClientConnectToServer(
       objectDirectory.as_ptr(),
       1,
-      std::ptr::null_mut(),
-      std::ptr::null_mut(),
+      &mut baseSrvInfo as *mut _ as *mut c_void,
+      8,
       &mut calledFromServer,
-    );
-    status >= 0
+    )
+  };
+  if status1 < 0 {
+    eprintln!("[csr] CsrClientConnectToServer(BASESRV) failed: ntstatus={:#x}", status1 as i32);
+    return false;
   }
+
+  // Step 3b: connect to USERSRV (ServerId=3). ConnectionInfo is a zeroed
+  // 0x240-byte buffer (matches what kernel32!BasepConnect does on first
+  // connect — WINNIE fork.cpp uses the same shape).
+  let mut userSrvInfo = [0u8; 0x240];
+  let status2 = unsafe {
+    CsrClientConnectToServer(
+      objectDirectory.as_ptr(),
+      3,
+      userSrvInfo.as_mut_ptr() as *mut c_void,
+      0x240,
+      &mut calledFromServer,
+    )
+  };
+  if status2 < 0 {
+    eprintln!("[csr] CsrClientConnectToServer(USERSRV) failed: ntstatus={:#x}", status2 as i32);
+    return false;
+  }
+
+  // Step 4: register the current thread with CSRSS. This is the piece that
+  // was completely missing from the first attempt.
+  let status3 = unsafe { RtlRegisterThreadWithCsrss() };
+  if status3 < 0 {
+    eprintln!(
+      "[csr] RtlRegisterThreadWithCsrss failed: ntstatus={:#x}",
+      status3
+    );
+    return false;
+  }
+
+  eprintln!(
+    "[csr] reconnectCsr OK (sid={} base={:#x} size={} ctrl={:#x})",
+    sessionId,
+    block.base,
+    block.size,
+    block.ctrl_routine
+  );
+  true
 }
 
 // =================================================================================================
