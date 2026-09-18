@@ -503,15 +503,22 @@ fn zygoteLoop(serverName: String) -> !
   // and with SIG_IGN it will fail with ECHILD and enter guaranteed CPU load.
   sys::ignoreChildExits(); // no-op on Windows: no SIGCHLD, no zombies
 
+  // Resolve `ntdll!CsrPortHandle` once, in the healthy zygote, BEFORE any
+  // clone is spawned. Children inherit the cached address via CoW and use
+  // it in `reconnectCsr()` to NULL the stale handle and re-establish the
+  // CSR connection. No-op on Unix.
+  #[cfg(windows)]
+  sys::resolveCsrPortHandle();
+
   // Control channels: Runtime holds commandTx + replyRx;
   // Main Zygote holds commandRx + replyTx.
-  let (commandTx, commandRx): (IpcSender<ZygoteCommand>, IpcReceiver<ZygoteCommand>) = 
+  let (commandTx, commandRx): (IpcSender<ZygoteCommand>, IpcReceiver<ZygoteCommand>) =
     match ipc::channel::<ZygoteCommand>()
     {
       Ok(p) => p,
       Err(_) => std::process::exit(1)
     };
-  let (replyTx, replyRx): (IpcSender<ZygoteReply>, IpcReceiver<ZygoteReply>) = 
+  let (replyTx, replyRx): (IpcSender<ZygoteReply>, IpcReceiver<ZygoteReply>) =
     match ipc::channel::<ZygoteReply>()
     {
       Ok(p) => p,
@@ -549,92 +556,102 @@ fn zygoteLoop(serverName: String) -> !
     match cmd
     {
       ZygoteCommand::SpawnClone =>
-      {
-        // Parent creates a one-shot server; only the *name* crosses to the child.
-        // Data path is established AFTER fork/clone:
-        //   Unix  — ipc-channel ends created in child, sent over one-shot
-        //   Windows — named pipes by name (ipc-channel handle OOB breaks under
-        //             RtlCloneUserProcess)
-        let (cloneServer, cloneServerName): (
-          IpcOneShotServer<CloneBootstrap>,
-          String
-        ) = match IpcOneShotServer::new()
         {
-          Ok(s) => s,
-          Err(_) =>
+          // Parent creates a one-shot server; only the *name* crosses to the child.
+          // Data path is established AFTER fork/clone:
+          //   Unix  — ipc-channel ends created in child, sent over one-shot
+          //   Windows — named pipes by name (ipc-channel handle OOB breaks under
+          //             RtlCloneUserProcess)
+          let (cloneServer, cloneServerName): (
+            IpcOneShotServer<CloneBootstrap>,
+            String
+          ) = match IpcOneShotServer::new()
+          {
+            Ok(s) => s,
+            Err(_) =>
+              {
+                let _ = replyTx.send(ZygoteReply::SpawnFailed);
+                continue;
+              }
+          };
+
+          #[cfg(unix)]
+          let spawned: Option<u32> = match unsafe { libc::fork() }
+          {
+            -1 => None,
+            0 =>
+              {
+                std::mem::forget(cloneServer);
+                std::mem::forget(commandRx);
+                std::mem::forget(replyTx);
+                cloneBootstrapLoop(cloneServerName)
+              }
+            pid => Some(pid as u32)
+          };
+
+          #[cfg(windows)]
+          let spawned: Option<u32> = match sys::cloneProcess()
+          {
+            Ok(result) =>
+            {
+              let pid = result.pid;
+              // Thread already running (no CREATE_SUSPENDED).
+              sys::closeCloneHandles(&result);
+              Some(pid)
+            }
+            Err(sys::STATUS_PROCESS_CLONED) =>
+            {
+              std::mem::forget(cloneServer);
+              std::mem::forget(commandRx);
+              std::mem::forget(replyTx);
+              // We are the clone. The inherited CsrPortHandle points at a
+              // stale CSR context — re-establish it before any Win32/basesrv
+              // call (reattachConsole, _stat64 in handleRequest, etc.) or
+              // those calls will AV and we die with ERROR_BROKEN_PIPE on the
+              // data pipe. Best-effort: if symbols were never resolved, we
+              // proceed anyway — same failure mode as before this fix.
+              let csrOk = sys::reconnectCsr();
+              eprintln!("[child] reconnectCsr={}", csrOk);
+              sys::reattachConsole();
+              sys::silenceCrashReporting();
+              cloneBootstrapLoop(cloneServerName)
+            }
+            Err(_) => None
+          };
+
+          let Some(pid) = spawned else
           {
             let _ = replyTx.send(ZygoteReply::SpawnFailed);
             continue;
-          }
-        };
-
-        #[cfg(unix)]
-        let spawned: Option<u32> = match unsafe { libc::fork() }
-        {
-          -1 => None,
-          0 =>
-          {
-            std::mem::forget(cloneServer);
-            std::mem::forget(commandRx);
-            std::mem::forget(replyTx);
-            cloneBootstrapLoop(cloneServerName)
-          }
-          pid => Some(pid as u32)
-        };
-
-        #[cfg(windows)]
-        let spawned: Option<u32> = match sys::cloneProcess()
-        {
-          Ok(result) =>
-          {
-            let pid = result.pid;
-            // Thread already running (no CREATE_SUSPENDED).
-            sys::closeCloneHandles(&result);
-            Some(pid)
-          }
-          Err(sys::STATUS_PROCESS_CLONED) =>
-          {
-            std::mem::forget(cloneServer);
-            std::mem::forget(commandRx);
-            std::mem::forget(replyTx);
-            sys::reattachConsole();
-            sys::silenceCrashReporting();
-            cloneBootstrapLoop(cloneServerName)
-          }
-          Err(_) => None
-        };
-
-        let Some(pid) = spawned else
-        {
-          let _ = replyTx.send(ZygoteReply::SpawnFailed);
-          continue;
-        };
-
-        let (_rx, bootstrap): (IpcReceiver<CloneBootstrap>, CloneBootstrap) =
-          match cloneServer.accept()
-          {
-            Ok(v) => v,
-            Err(_) =>
-            {
-              sys::killProcess(pid);
-              let _ = replyTx.send(ZygoteReply::SpawnFailed);
-              continue;
-            }
           };
 
-        #[cfg(unix)]
-        let _ = replyTx.send(ZygoteReply::Clone {
-          pid,
-          requestTx: bootstrap.requestTx,
-          responseRx: bootstrap.responseRx
-        });
-        #[cfg(windows)]
-        let _ = replyTx.send(ZygoteReply::Clone {
-          pid,
-          data_pipe: bootstrap.data_pipe
-        });
-      }
+          // Receive the Runtime-facing ends from the clone, forward them on.
+          let (_rx, bootstrap): (IpcReceiver<CloneBootstrap>, CloneBootstrap) =
+            match cloneServer.accept()
+            {
+              Ok(v) => v,
+              Err(_) =>
+                {
+                  sys::killProcess(pid);
+                  let _ = replyTx.send(ZygoteReply::SpawnFailed);
+                  continue;
+                }
+            };
+
+          #[cfg(unix)]
+          let _ = replyTx.send(ZygoteReply::Clone {
+            pid,
+            requestTx: bootstrap.requestTx,
+            responseRx: bootstrap.responseRx
+          });
+          #[cfg(windows)]
+          let _ = replyTx.send(ZygoteReply::Clone {
+            pid,
+            data_pipe: bootstrap.data_pipe
+          });
+        }
     }
+    //
   }
 }
 

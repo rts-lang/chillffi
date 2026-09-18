@@ -63,6 +63,28 @@ pub struct RTL_USER_PROCESS_INFORMATION {
   pub ImageInformation: SECTION_IMAGE_INFORMATION,
 }
 
+// SYMBOL_INFO (dbghelp). SizeOfStruct must be set to the size of the struct
+// without the trailing `Name` array — 88 bytes on x64. We allocate a
+// 2000-byte Name buffer to be safe regardless of decoration length.
+#[repr(C)]
+struct SYMBOL_INFO {
+  SizeOfStruct: u32,
+  TypeIndex: u32,
+  Reserved: [u64; 2],
+  Index: u32,
+  Size: u32,
+  ModBase: u64,
+  Flags: u32,
+  Value: u64,
+  Address: u64,
+  Register: u32,
+  Scope: u32,
+  Tag: u32,
+  NameLen: u32,
+  MaxNameLen: u32,
+  Name: [i8; 2000],
+}
+
 #[link(name = "kernel32")]
 unsafe extern "system" {
   fn OpenProcess(desiredAccess: u32, inheritHandle: i32, processId: u32) -> Handle;
@@ -115,6 +137,14 @@ unsafe extern "system" {
     lpMaxCollectionCount: *mut u32,
     lpCollectDataTimeout: *mut u32,
   ) -> i32;
+  fn GetCurrentProcess() -> Handle;
+}
+
+#[link(name = "dbghelp")]
+unsafe extern "system" {
+  fn SymInitializeW(hProcess: Handle, userSearchPath: *const u16, fInvadeProcess: i32) -> i32;
+  fn SymFromName(hProcess: Handle, name: *const i8, symbol: *mut SYMBOL_INFO) -> i32;
+  fn SymCleanup(hProcess: Handle) -> i32;
 }
 
 #[link(name = "ntdll")]
@@ -125,6 +155,18 @@ unsafe extern "system" {
     ThreadSecurityDescriptor: *mut c_void,
     DebugPort: Handle,
     ProcessInformation: *mut RTL_USER_PROCESS_INFORMATION,
+  ) -> i32;
+  // Undocumented. No-op if CsrPortHandle is non-NULL — that is exactly the
+  // situation in a RtlCloneUserProcess clone, where the handle value (and the
+  // CSR_PROCESS state on the csrss.exe side) is inherited stale from parent.
+  // Signature reconstructed from ReactOS CsrClientConnectToServer; verify
+  // against a real LdrpInitializeProcess disassembly if status < 0.
+  fn CsrClientConnectToServer(
+    ObjectDirectory: *const u16,
+    ServerId: u32,
+    ConnectionInfo: *mut c_void,
+    ConnectionInfoLength: *mut u32,
+    CalledFromServer: *mut u8,
   ) -> i32;
 }
 
@@ -397,6 +439,99 @@ pub fn pipeRecv(h: Handle) -> Option<Vec<u8>>
 pub fn lastPipeError() -> u32
 {
   unsafe { GetLastError() }
+}
+
+// =================================================================================================
+// CSRSS reconnect (undocumented). CsrPortHandle survives a CoW clone as a
+// stale value — the lazy-connect guard inside CsrClientConnectToServer
+// treats the port as live and does not re-establish the connection. As a
+// result, Win32 calls that route through CSR / basesrv (e.g. _stat64,
+// activation-context APIs, parts of the loader) AV or abort, surfacing as
+// ERROR_BROKEN_PIPE (109) on the data pipe. ucrt-only paths (math, string)
+// keep working because they never touch CSR.
+//
+// Strategy:
+//   1. In the healthy main zygote, BEFORE the first clone, resolve the
+//      address of `ntdll!CsrPortHandle` via dbghelp / symbol server.
+//      The address is cached in a static OnceLock; children inherit it
+//      through CoW for free.
+//   2. In a freshly cloned child, NULL out the stale handle and call
+//      CsrClientConnectToServer again, so ntdll re-establishes a real
+//      connection to csrss.exe for this PID.
+// =================================================================================================
+
+static CsrPortHandleAddress: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+/// Resolve `ntdll!CsrPortHandle` once, in the healthy main zygote, before
+/// any clone is spawned. Safe to call multiple times — the second call is a
+/// no-op. Stores 0 on failure (no network / no symbols); `reconnectCsr`
+/// then returns `false` and the clone falls back to the broken-port path.
+pub fn resolveCsrPortHandle() -> ()
+{
+  CsrPortHandleAddress.get_or_init(|| unsafe {
+    let process: Handle = GetCurrentProcess();
+
+    // If _NT_SYMBOL_PATH is already set, let dbghelp read it; otherwise
+    // build a default cache + msdl path so first-run CI also works.
+    let searchPath: Option<Vec<u16>> = if std::env::var("_NT_SYMBOL_PATH").is_ok() {
+      None
+    } else {
+      let cache = std::env::temp_dir().join("chillffi-symbols");
+      Some(
+        format!(
+          "srv*{}*https://msdl.microsoft.com/download/symbols\0",
+          cache.display()
+        )
+          .encode_utf16()
+          .collect(),
+      )
+    };
+    let searchPathPtr = searchPath.as_ref().map_or(std::ptr::null(), |v| v.as_ptr());
+
+    if SymInitializeW(process, searchPathPtr, 1) == 0 {
+      return 0;
+    }
+
+    let mut info: SYMBOL_INFO = std::mem::zeroed();
+    info.SizeOfStruct = 88; // sizeof(SYMBOL_INFO) without Name, x64
+    info.MaxNameLen = 2000;
+
+    let name = b"ntdll!CsrPortHandle\0";
+    let found = SymFromName(process, name.as_ptr() as *const i8, &mut info) != 0;
+    SymCleanup(process);
+
+    if found { info.Address as usize } else { 0 }
+  });
+}
+
+/// Child-side: NULL the stale CsrPortHandle and re-run CsrClientConnectToServer
+/// against `\Windows` so ntdll opens a fresh ALPC connection to csrss.exe for
+/// this cloned PID.
+///
+/// Returns `true` on success, `false` if the address was never resolved
+/// (resolveCsrPortHandle failed in the main zygote) or the reconnect call
+/// returned a negative NTSTATUS.
+pub fn reconnectCsr() -> bool
+{
+  let address = match CsrPortHandleAddress.get() {
+    Some(&a) if a != 0 => a,
+    _ => return false,
+  };
+
+  unsafe {
+    *(address as *mut Handle) = std::ptr::null_mut();
+
+    let objectDirectory: Vec<u16> = "\\Windows\0".encode_utf16().collect();
+    let mut calledFromServer: u8 = 0;
+    let status = CsrClientConnectToServer(
+      objectDirectory.as_ptr(),
+      1,
+      std::ptr::null_mut(),
+      std::ptr::null_mut(),
+      &mut calledFromServer,
+    );
+    status >= 0
+  }
 }
 
 // =================================================================================================
