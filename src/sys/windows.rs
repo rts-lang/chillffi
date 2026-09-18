@@ -474,11 +474,14 @@ pub fn lastPipeError() -> u32
 // because they never touch CSR.
 //
 // Fix (cross-checked against WINNIE, NDSS'21, forklib/fork.cpp):
-//   1. Resolve the address range [CsrServerApiRoutine .. RtlpEnvironLookupTable)
-//      in the healthy zygote, BEFORE the first clone. The address is cached
-//      in a static OnceLock; children inherit it through CoW for free.
+//   1. Resolve the address of the CSR data block in the healthy zygote,
+//      BEFORE the first clone. The address is cached in a static OnceLock;
+//      children inherit it through CoW for free.
 //   2. In the clone: zero out the whole block — not just CsrPortHandle — so
 //      CsrInitOnceDone goes back to 0 and CsrClientConnectToServer will run.
+//      Block size is hardcoded (0x80 bytes, slightly larger than WINNIE's
+//      0x78 to accommodate newer Win11 builds where the layout may have
+//      grown). Over-zeroing is safe — bytes past the block are .data padding.
 //   3. Call CsrClientConnectToServer TWICE:
 //        a) BASESRV  (ServerId=1), ConnectionInfo = &kernelbase!CtrlRoutine,
 //           ConnectionInfoLength = 8.
@@ -490,14 +493,47 @@ pub fn lastPipeError() -> u32
 //      the subsystem. Without it, the first CsrClientCallServer can AV
 //      because the TID is not in the CSR_THREAD table.
 //
+// Block address resolution strategy (two-tier):
+//   - Strategy 1 (PDB): dbghelp!SymFromName("ntdll!CsrServerApiRoutine").
+//     Works on Win10/11 x64 where Microsoft still ships the symbol in the
+//     public PDB. Fails on Win11 ARM64 where the symbol was stripped.
+//   - Strategy 2 (disasm): parse the first 1-2 instructions of the
+//     exported ntdll!CsrGetProcessId. This function is just
+//     `return CsrProcessId;` so its first instruction loads the address of
+//     CsrProcessId (which sits at offset +0x20 in the CSR data block).
+//     By disassembling the load we get the address without any PDB. Works
+//     on every architecture and doesn't need network access.
+//
 // Notes:
 //   - NotifyCsrssParent (CsrClientCallServer with BasepCreateProcess from
 //     the parent) is optional per WINNIE — the child works without it.
-//   - Hardcoded offsets are NOT used: we resolve two RVAs via dbghelp at
-//     zygote startup so the same binary works across Win10/Win11 builds.
-//   - The first resolve pulls ntdll.pdb from msdl (or _NT_SYMBOL_PATH if
-//     set). In air-gapped CI, pre-populate the symbol cache.
+//   - The first PDB resolve pulls ntdll.pdb from msdl (or _NT_SYMBOL_PATH
+//     if set). In air-gapped CI, Strategy 2 still works.
 // =================================================================================================
+
+// Hardcoded CSR data block size in ntdll. WINNIE (NDSS'21, Win10 1809)
+// measured 0x78 bytes from CsrServerApiRoutine to RtlpEnvironLookupTable.
+// We use 0x80 (128) as a safety margin for newer Win11 builds where the
+// layout may have grown slightly. Over-zeroing past the block is safe —
+// it lands in .data-section padding (zeros or uninitialised globals that
+// are never read before being written by ntdll itself).
+const CSR_BLOCK_SIZE: usize = 0x80;
+
+// Offset of CsrProcessId inside the CSR data block, relative to
+// CsrServerApiRoutine (the block start). Used by Strategy 2 (disasm) to
+// derive the block base from the address loaded by CsrGetProcessId.
+// Layout (from WINNIE gen_csrss_offsets.py .data dump, x64):
+//   +0x00  CsrServerApiRoutine          (8 bytes)
+//   +0x08  CsrClientProcess             (1 byte)
+//   +0x09  CsrInitOnceDone              (1 byte)
+//   +0x0A  padding                      (6 bytes)
+//   +0x10  CsrPortName                  (4 bytes)
+//   +0x14  padding                      (4 bytes)
+//   +0x18  qword_...                    (8 bytes)
+//   +0x20  CsrProcessId                 (8 bytes) <-- this
+//   +0x28  CsrReadOnlySharedMemorySize  (8 bytes)
+//   ...
+const CSR_PROCESS_ID_OFFSET: usize = 0x20;
 
 #[derive(Clone, Copy)]
 struct CsrDataBlock {
@@ -513,8 +549,10 @@ struct CsrDataBlock {
 static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
   std::sync::OnceLock::new();
 
-/// Look up a single symbol in the current process via dbghelp. Returns the
-/// VA (not RVA) of the symbol on success.
+/// Look up a single symbol in the current process via dbghelp. Tries
+/// several decorations because different PDB builds expose symbols under
+/// slightly different names (with or without the `module!` prefix, with or
+/// without a leading underscore for x86-decorated globals).
 unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64>
 {
   for name in names {
@@ -529,101 +567,221 @@ unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64
   None
 }
 
+/// Resolve the address of `kernelbase!CtrlRoutine` via GetProcAddress.
+/// Returns NULL if kernelbase is not loaded or the export is missing —
+/// BASESRV is tolerant of a NULL pointer in ConnectionInfo.
+unsafe fn resolveCtrlRoutine() -> *mut c_void
+{
+  let kernelbase = unsafe { GetModuleHandleA(c"kernelbase.dll".as_ptr().cast()) };
+  if kernelbase.is_null() {
+    return std::ptr::null_mut();
+  }
+  unsafe { GetProcAddress(kernelbase, c"CtrlRoutine".as_ptr().cast()) }
+}
+
+/// Strategy 1: PDB symbol lookup. Works on Win10/11 x64 where Microsoft
+/// still ships `CsrServerApiRoutine` in the public ntdll PDB. Returns None
+/// on ARM64 Win11 (symbol stripped) or when the symbol server is
+/// unreachable.
+unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
+{
+  let process: Handle = unsafe { GetCurrentProcess() };
+
+  // If _NT_SYMBOL_PATH is already set, let dbghelp read it; otherwise
+  // build a default cache + msdl path so first-run CI also works.
+  let searchPath: Option<Vec<u16>> = if std::env::var("_NT_SYMBOL_PATH").is_ok() {
+    None
+  } else {
+    let cache = std::env::temp_dir().join("chillffi-symbols");
+    Some(
+      format!(
+        "srv*{}*https://msdl.microsoft.com/download/symbols\0",
+        cache.display()
+      )
+        .encode_utf16()
+        .collect(),
+    )
+  };
+  let searchPathPtr = searchPath.as_ref().map_or(std::ptr::null(), |v| v.as_ptr());
+
+  if unsafe { SymInitializeW(process, searchPathPtr, 1) } == 0 {
+    eprintln!(
+      "[csr] PDB: SymInitializeW failed: {}",
+      unsafe { GetLastError() }
+    );
+    return None;
+  }
+
+  let csrBegin = unsafe {
+    lookupSymbol(process, &[
+      c"ntdll!CsrServerApiRoutine",
+      c"CsrServerApiRoutine",
+      c"_CsrServerApiRoutine",
+    ])
+  };
+  unsafe { SymCleanup(process) };
+
+  let Some(begin) = csrBegin else {
+    eprintln!("[csr] PDB: CsrServerApiRoutine not found in any decoration");
+    return None;
+  };
+
+  let ctrl_routine = unsafe { resolveCtrlRoutine() };
+  eprintln!(
+    "[csr] PDB: resolved base={:#x} size={} ctrl_routine={:p}",
+    begin,
+    CSR_BLOCK_SIZE,
+    ctrl_routine
+  );
+
+  Some(CsrDataBlock {
+    base: begin as usize,
+    size: CSR_BLOCK_SIZE,
+    ctrl_routine: ctrl_routine as usize,
+  })
+}
+
+/// Strategy 2: disassemble the exported `ntdll!CsrGetProcessId` to find
+/// the address of `CsrProcessId` (which sits inside the CSR data block at
+/// offset +0x20), then subtract the offset to get the block base. Works
+/// without any PDB / network access on any architecture.
+unsafe fn resolveCsrBlockViaDisasm() -> Option<CsrDataBlock>
+{
+  let ntdll = unsafe { GetModuleHandleA(c"ntdll.dll".as_ptr().cast()) };
+  if ntdll.is_null() {
+    eprintln!("[csr] disasm: ntdll not loaded");
+    return None;
+  }
+  let fn_addr = unsafe { GetProcAddress(ntdll, c"CsrGetProcessId".as_ptr().cast()) } as usize;
+  if fn_addr == 0 {
+    eprintln!("[csr] disasm: CsrGetProcessId not exported");
+    return None;
+  }
+
+  let csr_process_id_addr = unsafe { decodeCsrProcessIdLoad(fn_addr) }?;
+  let base = csr_process_id_addr.checked_sub(CSR_PROCESS_ID_OFFSET)?;
+  let ctrl_routine = unsafe { resolveCtrlRoutine() };
+
+  eprintln!(
+    "[csr] disasm: CsrGetProcessId={:#x} CsrProcessId={:#x} base={:#x} size={} ctrl_routine={:p}",
+    fn_addr,
+    csr_process_id_addr,
+    base,
+    CSR_BLOCK_SIZE,
+    ctrl_routine
+  );
+
+  Some(CsrDataBlock {
+    base,
+    size: CSR_BLOCK_SIZE,
+    ctrl_routine: ctrl_routine as usize,
+  })
+}
+
+/// Parse the first instruction(s) of `CsrGetProcessId` to extract the
+/// address of `CsrProcessId`. Architecture-specific.
+unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
+{
+  #[cfg(target_arch = "x86_64")]
+  {
+    // x64: CsrGetProcessId is literally
+    //   mov  eax, dword ptr [rip + disp32]   ; 8B 05 disp32
+    //   ret                                  ; C3
+    // The address of CsrProcessId = (fn_addr + 6) + sign_extend(disp32).
+    let bytes = unsafe { std::slice::from_raw_parts(fn_addr as *const u8, 8) };
+    if bytes[0] != 0x8B || bytes[1] != 0x05 {
+      eprintln!(
+        "[csr] disasm x64: expected `mov eax, [rip+disp32]` (8B 05 ..), got {:02x} {:02x}",
+        bytes[0], bytes[1]
+      );
+      return None;
+    }
+    let disp = i32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]);
+    Some(fn_addr.wrapping_add(6).wrapping_add(disp as usize))
+  }
+
+  #[cfg(target_arch = "aarch64")]
+  {
+    // ARM64: CsrGetProcessId is typically
+    //   adrp  x0, page_of_csr_data         ; 0x90000000 | (immlo<<29) | (immhi<<5) | Rd
+    //   ldr   w0, [x0, #imm12]             ; 0xB9400000 | (imm12<<10) | (Rn<<5) | Rt
+    //   ret                                 ; 0xD65F03C0
+    // The address of CsrProcessId = page_addr + (imm12 << 2).
+    let insts = unsafe { std::slice::from_raw_parts(fn_addr as *const u32, 4) };
+
+    let adrp = insts[0];
+    if (adrp & 0x9F000000) != 0x90000000 {
+      eprintln!(
+        "[csr] disasm ARM64: expected adrp, got {:#010x}",
+        adrp
+      );
+      return None;
+    }
+    let rd = (adrp & 0x1F) as u32;
+    let immlo = ((adrp >> 29) & 0x3) as u64;
+    let immhi = ((adrp >> 5) & 0x7FFFF) as u64;
+    let imm21 = (immhi << 2) | immlo;
+    // Sign-extend 21 bits to 64 bits.
+    let imm21 = if imm21 & (1u64 << 20) != 0 {
+      imm21 | (!0u64 << 21)
+    } else {
+      imm21
+    };
+    let page_addr = (fn_addr & !0xFFFusize).wrapping_add((imm21 << 12) as usize);
+
+    let ldr = insts[1];
+    // ldr Wt, [Xn, #imm12]  (32-bit, unsigned offset)
+    //   1011 1001 0100 0xxx xxxx xxxx xxxx xxxx
+    //   mask 0xFFC00000, expected 0xB9400000
+    if (ldr & 0xFFC00000) != 0xB9400000 {
+      eprintln!(
+        "[csr] disasm ARM64: expected `ldr w0, [x0, #imm]`, got {:#010x}",
+        ldr
+      );
+      return None;
+    }
+    let rn = ((ldr >> 5) & 0x1F) as u32;
+    let imm12 = ((ldr >> 10) & 0xFFF) as usize;
+    if rn != rd {
+      eprintln!(
+        "[csr] disasm ARM64: register mismatch, adrp uses x{}, ldr uses x{}",
+        rd, rn
+      );
+      return None;
+    }
+    // 32-bit load: imm12 is scaled by 4.
+    let offset = imm12 << 2;
+    Some(page_addr.wrapping_add(offset))
+  }
+
+  #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+  {
+    let _ = fn_addr;
+    eprintln!("[csr] disasm: not implemented for this architecture");
+    None
+  }
+}
+
 /// Resolve the CSR data block in ntdll + the CtrlRoutine entry in
 /// kernelbase. Idempotent. Safe to call multiple times. Stores `None` on
-/// failure (no network / no symbols); `reconnectCsr` then returns `false`
+/// failure (both strategies failed); `reconnectCsr` then returns `false`
 /// and the clone falls back to the broken-port path.
 pub fn resolveCsrPortHandle() -> ()
 {
   CsrDataBlockAddress.get_or_init(|| unsafe {
-    let process: Handle = GetCurrentProcess();
-
-    // If _NT_SYMBOL_PATH is already set, let dbghelp read it; otherwise
-    // build a default cache + msdl path so first-run CI also works.
-    let searchPath: Option<Vec<u16>> = if std::env::var("_NT_SYMBOL_PATH").is_ok() {
-      None
-    } else {
-      let cache = std::env::temp_dir().join("chillffi-symbols");
-      Some(
-        format!(
-          "srv*{}*https://msdl.microsoft.com/download/symbols\0",
-          cache.display()
-        )
-          .encode_utf16()
-          .collect(),
-      )
-    };
-    let searchPathPtr = searchPath.as_ref().map_or(std::ptr::null(), |v| v.as_ptr());
-
-    if SymInitializeW(process, searchPathPtr, 1) == 0 {
-      eprintln!("[csr] SymInitializeW failed: {}", GetLastError());
-      return None;
+    // Strategy 1: PDB symbol lookup. Works on Win10/11 x64.
+    if let Some(block) = unsafe { resolveCsrBlockViaPdb() } {
+      return Some(block);
     }
 
-    let csrBegin = lookupSymbol(process, &[
-      c"ntdll!CsrServerApiRoutine",
-      c"CsrServerApiRoutine",
-      c"_CsrServerApiRoutine",
-    ]);
-    let csrEnd = lookupSymbol(process, &[
-      c"ntdll!RtlpEnvironLookupTable",
-      c"RtlpEnvironLookupTable",
-      c"_RtlpEnvironLookupTable",
-    ]);
-    SymCleanup(process);
+    // Strategy 2: disassemble CsrGetProcessId. Works on ARM64 Win11 and
+    // any other build where PDB symbols are unavailable.
+    if let Some(block) = unsafe { resolveCsrBlockViaDisasm() } {
+      return Some(block);
+    }
 
-    let Some(begin) = csrBegin else {
-      eprintln!("[csr] symbol lookup failed: CsrServerApiRoutine not found");
-      return None;
-    };
-
-    // WINNIE gen_csrss_offsets.py reports the block as ~0x78 bytes on
-    // x64 (CsrServerApiRoutine .. RtlpEnvironLookupTable). Microsoft
-    // stopped publishing RtlpEnvironLookupTable in ntdll's public PDB
-    // after Win10 1809, so when it is absent we fall back to a fixed
-    // 0x80 (128) — a bit larger than WINNIE's 0x78 to cover Win11 growth.
-    // Zeroing a few extra qwords past the block is safe: the region
-    // after the CSR data block is plain .data padding, never read
-    // before CsrClientConnectToServer re-initialises it.
-    let (size, via) = if let Some(e) = csrEnd {
-      if e <= begin {
-        eprintln!(
-          "[csr] unexpected symbol order: begin={:#x} end={:#x}",
-          begin, e
-        );
-        return None;
-      }
-      ((e - begin) as usize, "via symbol")
-    } else {
-      eprintln!(
-        "[csr] RtlpEnvironLookupTable not found, using hardcoded fallback size 128"
-      );
-      (128usize, "via fallback")
-    };
-
-    // kernelbase!CtrlRoutine — passed as BASESRV ConnectionInfo. If not
-    // found, fall back to NULL (some Win10 builds expose it under a
-    // different name; BASESRV is tolerant of a NULL pointer).
-    let kernelbase = GetModuleHandleA(c"kernelbase.dll".as_ptr().cast());
-    let ctrlRoutine = if !kernelbase.is_null() {
-      GetProcAddress(kernelbase, c"CtrlRoutine".as_ptr().cast())
-    } else {
-      std::ptr::null_mut()
-    };
-
-    eprintln!(
-      "[csr] resolved block: base={:#x} size={} ({}) ctrl_routine={:p}",
-      begin,
-      size,
-      via,
-      ctrlRoutine
-    );
-
-    Some(CsrDataBlock {
-      base: begin as usize,
-      size,
-      ctrl_routine: ctrlRoutine as usize,
-    })
+    eprintln!("[csr] both PDB and disassembly strategies failed");
+    None
   });
 }
 
@@ -682,7 +840,10 @@ pub fn reconnectCsr() -> bool
     )
   };
   if status1 < 0 {
-    eprintln!("[csr] CsrClientConnectToServer(BASESRV) failed: ntstatus={:#x}", status1 as i32);
+    eprintln!(
+      "[csr] CsrClientConnectToServer(BASESRV) failed: ntstatus={:#x}",
+      status1
+    );
     return false;
   }
 
@@ -700,7 +861,10 @@ pub fn reconnectCsr() -> bool
     )
   };
   if status2 < 0 {
-    eprintln!("[csr] CsrClientConnectToServer(USERSRV) failed: ntstatus={:#x}", status2 as i32);
+    eprintln!(
+      "[csr] CsrClientConnectToServer(USERSRV) failed: ntstatus={:#x}",
+      status2
+    );
     return false;
   }
 
