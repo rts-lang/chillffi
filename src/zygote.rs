@@ -618,7 +618,14 @@ fn zygoteLoop(serverName: String) -> !
                 // failure mode as before this fix.
                 let csrOk = sys::reconnectCsr();
                 eprintln!("[child] reconnectCsr={}", csrOk);
-                sys::reattachConsole();
+                // reattachConsole goes through Win32 → CSRSS. If CSR was
+                // not reconnected (ARM64 without a resolved block), the
+                // stale ALPC port makes FreeConsole/AttachConsole hang —
+                // the clone never reaches cloneBootstrapLoop, and the
+                // parent blocks forever on cloneServer.accept().
+                if csrOk {
+                  sys::reattachConsole();
+                }
                 sys::silenceCrashReporting();
                 cloneBootstrapLoop(cloneServerName)
               }

@@ -181,10 +181,11 @@ unsafe extern "system" {
   // that does CsrClientCallServer can blow up because the thread is unknown
   // to the subsystem.
   fn RtlRegisterThreadWithCsrss() -> i32;
-  // Exported on both x64 and ARM64. Best-effort fallback for the case
-  // where the CSR data block could not be located (ARM64 Win11: PDB has
-  // the symbol but SymFromName finds nothing, and CsrGetProcessId is not
-  // a bare leaf function). Treated as NTSTATUS (i32); success is >= 0.
+  // Exported on both x64 and ARM64 (checked via llvm-readobj --coff-exports
+  // on ntdll from Win11 23H2 ARM64). Best-effort fallback when the CSR
+  // data block can't be located — the official counterpart to the manual
+  // zero + CsrClientConnectToServer + RtlRegisterThreadWithCsrss dance.
+  // Treated as NTSTATUS: success is >= 0.
   fn RtlPrepareForProcessCloning() -> i32;
 }
 
@@ -707,121 +708,69 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
 
   #[cfg(target_arch = "aarch64")]
   {
-    // ARM64 CsrGetProcessId is one of:
-    //   (a) adrp  xD, page
-    //       ldr   w0, [xD, #imm12]
-    //       ret
-    //   (b) adrp  xD, page
-    //       add   xD, xD, #imm12
-    //       ldr   w0, [xD]
-    //       ret
-    // and may be preceded by a small prologue (stp x29, x30 / mov x29, sp)
-    // on builds where the function isn't a bare leaf. Scan the first few
-    // instructions for `adrp` and then accept either shape; also accept
-    // 64-bit `ldr x0` in case the codegen uses an x-register load.
-    let insts = unsafe { std::slice::from_raw_parts(fn_addr as *const u32, 8) };
+    // ARM64 CsrGetProcessId on Win11 looks like:
+    //   adrp x8, flag_page
+    //   ldrb w8, [x8, #flag_off]     ; some byte flag
+    //   cmp  w8, #0
+    //   adrp x8, data_page
+    //   ldr  x8, [x8, #data_off]     ; <- this loads CsrProcessId
+    //   csel x0, x8, xzr, ne
+    //   ret
+    // The relevant pair is the SECOND `adrp`+`ldr` (a real 32/64-bit
+    // unsigned-offset load), not the leading `adrp`+`ldrb`. Scan a window
+    // of instructions for that pair; skip byte/halfword loads by matching
+    // only LDR (W or X) opcodes.
+    let insts = unsafe { std::slice::from_raw_parts(fn_addr as *const u32, 16) };
     eprintln!(
-      "[csr] disasm ARM64: insts = {:#010x} {:#010x} {:#010x} {:#010x} {:#010x} {:#010x}",
-      insts[0], insts[1], insts[2], insts[3], insts[4], insts[5]
+      "[csr] disasm ARM64: insts = {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+      insts[0], insts[1], insts[2], insts[3],
+      insts[4], insts[5], insts[6], insts[7]
     );
 
-    // Skip optional prologue.
-    let mut i = 0usize;
-    while i < 4 {
-      let inst = insts[i];
-      // stp x29, x30, [sp, #imm]!  : 1010 1001 10 imm7 11110 11101
-      let is_stp_pre = (inst & 0xFFC003E0) == 0xA98003A0;
-      // mov x29, sp  : 0x910003FD or 0xAA0003FD
-      let is_mov_x29_sp = inst == 0x910003FD || inst == 0xAA0003FD;
-      if is_stp_pre || is_mov_x29_sp {
-        i += 1;
-      } else {
-        break;
+    for i in 0..(insts.len() - 1) {
+      let a = insts[i];
+      let l = insts[i + 1];
+
+      // adrp xD: bits[31:24] = 1001_0000 and bits[28:24] = 10000.
+      if (a & 0x9F000000) != 0x90000000 {
+        continue;
       }
-    }
-
-    let adrp = insts[i];
-    if (adrp & 0x9F000000) != 0x90000000 {
-      eprintln!(
-        "[csr] disasm ARM64: expected adrp at inst[{}], got {:#010x}",
-        i, adrp
-      );
-      return None;
-    }
-    let rd = (adrp & 0x1F) as u32;
-    let immlo = ((adrp >> 29) & 0x3) as u64;
-    let immhi = ((adrp >> 5) & 0x7FFFF) as u64;
-    let imm21 = (immhi << 2) | immlo;
-    let imm21 = if imm21 & (1u64 << 20) != 0 {
-      imm21 | (!0u64 << 21)
-    } else {
-      imm21
-    };
-    let page_addr = (fn_addr & !0xFFFusize).wrapping_add((imm21 << 12) as usize);
-
-    let next = insts[i + 1];
-
-    // Shape (b): adrp xD, page ; add xD, xD, #imm12 ; ldr w/x0, [xD]
-    //   add xD, xN, #imm12  : mask 0xFF800000 -> 0x91000000
-    if (next & 0xFF800000) == 0x91000000 {
-      let rn = ((next >> 5) & 0x1F) as u32;
-      let imm12 = ((next >> 10) & 0xFFF) as usize;
+      let rd = (a & 0x1F) as u32;
+      let rn = ((l >> 5) & 0x1F) as u32;
       if rn != rd {
-        eprintln!(
-          "[csr] disasm ARM64: `add` register mismatch: adrp=x{}, add=x{}",
-          rd, rn
-        );
-        return None;
+        continue;
       }
-      let addr = page_addr.wrapping_add(imm12);
-      let ldr = insts[i + 2];
-      let rn2 = ((ldr >> 5) & 0x1F) as u32;
-      let imm12b = ((ldr >> 10) & 0xFFF) as usize;
-      if rn2 != rd {
-        eprintln!(
-          "[csr] disasm ARM64: `ldr` register mismatch: expected x{}, got x{}",
-          rd, rn2
-        );
-        return None;
-      }
-      // ldr Wt, [Xn, #imm12]  : mask 0xFFC00000 -> 0xB9400000  (scale 4)
-      // ldr Xt, [Xn, #imm12]  : mask 0xFFC00000 -> 0xF9400000  (scale 8)
-      let scale = match ldr & 0xFFC00000 {
+
+      // Only accept unsigned-offset LDR of 32 or 64 bits.
+      //   ldr Wt, [Xn, #imm12] : 0xB9400000 mask 0xFFC00000, scale 4
+      //   ldr Xt, [Xn, #imm12] : 0xF9400000 mask 0xFFC00000, scale 8
+      // ldrb (0x39400000) / ldrh (0x79400000) won't match, so the
+      // flag-byte load in the prologue is naturally skipped.
+      let scale = match l & 0xFFC00000 {
         0xB9400000 => 4usize,
         0xF9400000 => 8usize,
-        _ => {
-          eprintln!(
-            "[csr] disasm ARM64: expected ldr after add, got {:#010x}",
-            ldr
-          );
-          return None;
-        }
+        _ => continue,
       };
-      return Some(addr.wrapping_add(imm12b * scale));
+
+      let immlo = ((a >> 29) & 0x3) as u64;
+      let immhi = ((a >> 5) & 0x7FFFF) as u64;
+      let mut imm21 = (immhi << 2) | immlo;
+      if imm21 & (1u64 << 20) != 0 {
+        imm21 |= !0u64 << 21;
+      }
+      let page_addr = (fn_addr & !0xFFFusize).wrapping_add((imm21 << 12) as usize);
+      let imm12 = ((l >> 10) & 0xFFF) as usize;
+      let addr = page_addr.wrapping_add(imm12 * scale);
+
+      eprintln!(
+        "[csr] disasm ARM64: matched adrp@{} + ldr@{} -> {:#x} (scale {})",
+        i, i + 1, addr, scale
+      );
+      return Some(addr);
     }
 
-    // Shape (a): adrp xD, page ; ldr w/x0, [xD, #imm12]
-    let rn = ((next >> 5) & 0x1F) as u32;
-    let imm12 = ((next >> 10) & 0xFFF) as usize;
-    if rn != rd {
-      eprintln!(
-        "[csr] disasm ARM64: `ldr` register mismatch: expected x{}, got x{}",
-        rd, rn
-      );
-      return None;
-    }
-    let scale = match next & 0xFFC00000 {
-      0xB9400000 => 4usize,
-      0xF9400000 => 8usize,
-      _ => {
-        eprintln!(
-          "[csr] disasm ARM64: unexpected instruction after adrp: {:#010x}",
-          next
-        );
-        return None;
-      }
-    };
-    Some(page_addr.wrapping_add(imm12 * scale))
+    eprintln!("[csr] disasm ARM64: no adrp+ldr (32/64-bit) pair found");
+    None
   }
 
   #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
@@ -869,10 +818,12 @@ pub fn reconnectCsr() -> bool
   let block = match CsrDataBlockAddress.get() {
     Some(Some(b)) => *b,
     _ => {
-      // Fallback: on ARM64 Win11 neither dbghelp nor disassembly can
-      // locate CsrServerApiRoutine. ntdll exports
-      // RtlPrepareForProcessCloning — the official counterpart to the
-      // manual CSR fixup. Try it best-effort and report the NTSTATUS.
+      // Fallback: on ARM64 Win11 neither dbghelp nor disassembly could
+      // locate the CSR data block. ntdll exports RtlPrepareForProcessCloning
+      // — the official counterpart to the manual CSR fixup. Call it
+      // best-effort and report the NTSTATUS. If it hangs (as it may, if
+      // it internally touches the still-broken CSR port), the caller will
+      // see it never return — same failure mode as before this fallback.
       eprintln!("[csr] block unresolved; trying RtlPrepareForProcessCloning");
       let status = unsafe { RtlPrepareForProcessCloning() };
       eprintln!(
