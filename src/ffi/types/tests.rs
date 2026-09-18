@@ -13,20 +13,34 @@ fn signedIntegers() -> ()
 {
   ffi!(|scope| {
     let libc: Library = scope.load(LibcPath)?;
-    
-    let resI8: i8 = libc.call("abs").arg::<i8>(-5).result()?;
+
+    // abs() takes and returns `int` everywhere. Declaring the FFI call
+    // itself as i8/i16 relies on the ABI sign-extending into the full
+    // register — true on SysV x86-64 and apparently Windows ARM64, not on
+    // Windows x64 — so the call always uses i32, and narrowing to i8/i16
+    // happens in Rust afterward (no ABI involved, always correct).
+    let resI8: i8 = libc.call("abs").arg::<i32>(-5).result::<i32>()? as i8;
     assert!(matches!(resI8, 5));
-    
-    let resI16: i16 = libc.call("abs").arg::<i16>(-15).result()?;
+
+    let resI16: i16 = libc.call("abs").arg::<i32>(-15).result::<i32>()? as i16;
     assert!(matches!(resI16, 15));
-    
+
     let resI32: i32 = libc.call("abs").arg::<i32>(-42).result()?;
     assert!(matches!(resI32, 42));
-    
+
+    // labs() takes `long`: 64-bit on Unix (LP64), only 32-bit on Windows
+    // (LLP64). The call has to match whichever width the platform's C ABI
+    // actually gives `long`, not size_of::<isize>().
+    #[cfg(unix)]
     let resI64: i64 = libc.call("labs").arg::<i64>(-100000).result()?;
+    #[cfg(windows)]
+    let resI64: i64 = libc.call("labs").arg::<i32>(-100000).result::<i32>()? as i64;
     assert!(matches!(resI64, 100000));
-    
+
+    #[cfg(unix)]
     let resIsize: isize = libc.call("labs").arg::<isize>(-500).result()?;
+    #[cfg(windows)]
+    let resIsize: isize = libc.call("labs").arg::<i32>(-500).result::<i32>()? as isize;
     assert!(matches!(resIsize, 500));
 
     Ok(())

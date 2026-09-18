@@ -87,6 +87,7 @@ jobs:
                 | select(.kind[] == "example")
                 | .name
               ' |
+              tr -d '\r' |
               sort -u
           )
           
