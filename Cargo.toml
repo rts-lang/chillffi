@@ -69,7 +69,7 @@ incremental = true
 
 # ======================================================================================================================
 
-[build-dependencies]
+[target.'cfg(windows)'.build-dependencies]
 cc = "1.2"
 # Locates cl.exe/link.exe on Windows for build.rs; unused elsewhere.
 
@@ -91,11 +91,9 @@ libffi = { version = "5.2.0" }
 # a call on the fly based on a type description, which is good for FFI.
 
 libc = { version = "1.0.0-alpha.4" }
-# Provides the dup2/dup system calls for temporary
-# redirection of stdout → stderr, isolating the library output from the service channel.
-# todo Кстати это вроде не актуально ведь IPC другой.
-#
-# Also backs process control and the raw allocator on both Unix and Windows (src/sys).
+# Process control (fork/kill/waitpid, dladdr) and the raw allocator
+# (malloc/posix_memalign/free, _aligned_malloc on Windows) behind src/sys.
+# Also ENOENT and a couple of other constants used directly in tests.
 
 serde = { version = "1.0.229", features = ["derive"] }
 # Serialization and deserialization of request and response structures.
