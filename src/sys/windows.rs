@@ -66,6 +66,9 @@ pub struct RTL_USER_PROCESS_INFORMATION {
 // SYMBOL_INFO (dbghelp). SizeOfStruct must be set to the size of the struct
 // without the trailing `Name` array — 88 bytes on x64. We allocate a
 // 2000-byte Name buffer to be safe regardless of decoration length.
+// Only used by the x64 PDB strategy; on ARM64 the disasm path is the
+// only one that compiles, so the struct is cfg-gated to avoid dead code.
+#[cfg(target_arch = "x86_64")]
 #[repr(C)]
 struct SYMBOL_INFO {
   SizeOfStruct: u32,
@@ -140,9 +143,14 @@ unsafe extern "system" {
     lpMaxCollectionCount: *mut u32,
     lpCollectDataTimeout: *mut u32,
   ) -> i32;
+  // Only used by the x64 PDB strategy in resolveCsrBlockViaPdb.
+  #[cfg(target_arch = "x86_64")]
   fn GetCurrentProcess() -> Handle;
 }
 
+// Only needed for the x64 PDB strategy. On ARM64 there's nothing to link
+// to (would just be dead symbols), so the whole block is cfg-gated.
+#[cfg(target_arch = "x86_64")]
 #[link(name = "dbghelp")]
 unsafe extern "system" {
   fn SymInitializeW(hProcess: Handle, userSearchPath: *const u16, fInvadeProcess: i32) -> i32;
@@ -523,6 +531,12 @@ pub fn lastPipeError() -> u32
 // layout may have grown slightly. Over-zeroing past the block is safe —
 // it lands in .data-section padding (zeros or uninitialised globals that
 // are never read before being written by ntdll itself).
+//
+// Empirically verified working on:
+//   - Win10/11 x64 (via PDB base + this size)
+//   - Win11 23H2 ARM64 (build 22631.7584, via CsrGetProcessId disasm;
+//     the +0x20 offset between CsrProcessId and block base matches the
+//     x64 layout exactly, so the same size is assumed to hold).
 const CSR_BLOCK_SIZE: usize = 0x80;
 
 // Offset of CsrProcessId inside the CSR data block, relative to
@@ -559,6 +573,11 @@ static CsrDataBlockAddress: std::sync::OnceLock<Option<CsrDataBlock>> =
 /// several decorations because different PDB builds expose symbols under
 /// slightly different names (with or without the `module!` prefix, with or
 /// without a leading underscore for x86-decorated globals).
+///
+/// x64 only — on ARM64 the public PDB doesn't carry `CsrServerApiRoutine`
+/// at all, so the whole path is compiled out and `resolveCsrBlockViaDisasm`
+/// is used instead.
+#[cfg(target_arch = "x86_64")]
 unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64>
 {
   for name in names {
@@ -586,9 +605,11 @@ unsafe fn resolveCtrlRoutine() -> *mut c_void
 }
 
 /// Strategy 1: PDB symbol lookup. Works on Win10/11 x64 where Microsoft
-/// still ships `CsrServerApiRoutine` in the public ntdll PDB. Returns None
-/// on ARM64 Win11 (symbol stripped) or when the symbol server is
-/// unreachable.
+/// still ships `CsrServerApiRoutine` in the public ntdll PDB.
+///
+/// x64 only. On ARM64 Win11 the public PDB doesn't carry the symbol under
+/// any decoration, so the whole function is compiled out there.
+#[cfg(target_arch = "x86_64")]
 unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
 {
   let process: Handle = unsafe { GetCurrentProcess() };
@@ -720,7 +741,11 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
     // unsigned-offset load), not the leading `adrp`+`ldrb`. Scan a window
     // of instructions for that pair; skip byte/halfword loads by matching
     // only LDR (W or X) opcodes.
-    let insts = unsafe { std::slice::from_raw_parts(fn_addr as *const u32, 16) };
+    //
+    // Scan window: 32 instructions covers a hefty prologue (stack
+    // protector, /GS, Spectre v2 mitigations, BTI landing pad) plus the
+    // ~6-instruction body we actually need. Bumping this has no cost.
+    let insts = unsafe { std::slice::from_raw_parts(fn_addr as *const u32, 32) };
     eprintln!(
       "[csr] disasm ARM64: insts = {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
       insts[0], insts[1], insts[2], insts[3],
@@ -781,16 +806,19 @@ unsafe fn decodeCsrProcessIdLoad(fn_addr: usize) -> Option<usize>
   }
 }
 
-/// Resolve the CSR data block in ntdll + the CtrlRoutine entry in
-/// kernelbase. Idempotent. Safe to call multiple times. Stores `None` on
-/// failure (both strategies failed); `reconnectCsr` then returns `false`
-/// and the clone falls back to the broken-port path.
 pub fn resolveCsrPortHandle() -> ()
 {
   CsrDataBlockAddress.get_or_init(|| {
-    // Strategy 1: PDB symbol lookup. Works on Win10/11 x64.
-    if let Some(block) = unsafe { resolveCsrBlockViaPdb() } {
-      return Some(block);
+    // Strategy 1: PDB symbol lookup. Only worth trying on x64 — on Win11
+    // ARM64 `CsrServerApiRoutine` is not exported and the public PDB
+    // doesn't carry it under any decoration, so SymFromName always fails
+    // after a wasted network round-trip to msdl. Skipped entirely there
+    // (see the cfg on resolveCsrBlockViaPdb and the dbghelp block).
+    #[cfg(target_arch = "x86_64")]
+    {
+      if let Some(block) = unsafe { resolveCsrBlockViaPdb() } {
+        return Some(block);
+      }
     }
 
     // Strategy 2: disassemble CsrGetProcessId. Works on ARM64 Win11 and
@@ -799,7 +827,7 @@ pub fn resolveCsrPortHandle() -> ()
       return Some(block);
     }
 
-    eprintln!("[csr] both PDB and disassembly strategies failed");
+    eprintln!("[csr] both strategies failed");
     None
   });
 }
