@@ -570,18 +570,6 @@ pub fn resolveCsrPortHandle() -> ()
       c"RtlpEnvironLookupTable",
       c"_RtlpEnvironLookupTable",
     ]);
-    // Fallback end marker: RtlpCurDirRef sits immediately before
-    // RtlpEnvironLookupTable in ntdll's .data. It is a qword itself, so
-    // the block end is (RtlpCurDirRef + 8).
-    let csrEndFallback = if csrEnd.is_none() {
-      lookupSymbol(process, &[
-        c"ntdll!RtlpCurDirRef",
-        c"RtlpCurDirRef",
-        c"_RtlpCurDirRef",
-      ])
-    } else {
-      None
-    };
     SymCleanup(process);
 
     let Some(begin) = csrBegin else {
@@ -589,6 +577,14 @@ pub fn resolveCsrPortHandle() -> ()
       return None;
     };
 
+    // WINNIE gen_csrss_offsets.py reports the block as ~0x78 bytes on
+    // x64 (CsrServerApiRoutine .. RtlpEnvironLookupTable). Microsoft
+    // stopped publishing RtlpEnvironLookupTable in ntdll's public PDB
+    // after Win10 1809, so when it is absent we fall back to a fixed
+    // 0x80 (128) — a bit larger than WINNIE's 0x78 to cover Win11 growth.
+    // Zeroing a few extra qwords past the block is safe: the region
+    // after the CSR data block is plain .data padding, never read
+    // before CsrClientConnectToServer re-initialises it.
     let (size, via) = if let Some(e) = csrEnd {
       if e <= begin {
         eprintln!(
@@ -598,18 +594,9 @@ pub fn resolveCsrPortHandle() -> ()
         return None;
       }
       ((e - begin) as usize, "via symbol")
-    } else if let Some(f) = csrEndFallback {
-      if f <= begin {
-        eprintln!(
-          "[csr] unexpected fallback symbol order: begin={:#x} fallback={:#x}",
-          begin, f
-        );
-        return None;
-      }
-      (((f - begin) + 8) as usize, "via symbol")
     } else {
       eprintln!(
-        "[csr] RtlpEnvironLookupTable/RtlpCurDirRef not found, using hardcoded fallback size 128"
+        "[csr] RtlpEnvironLookupTable not found, using hardcoded fallback size 128"
       );
       (128usize, "via fallback")
     };
