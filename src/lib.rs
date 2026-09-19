@@ -161,7 +161,6 @@ mod examplesPlatform
 
 // =================================================================================================
 
-mod sys;
 mod worker;
 mod zygote;
 mod platform;

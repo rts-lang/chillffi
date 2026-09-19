@@ -40,7 +40,7 @@ use std::process::{Child, Command, Stdio};
 // =================================================================================================
 
 /// Backend tag used in diagnostics.
-const BACKEND_NAME: &str = "linux-libc";
+const BackendName: &str = "linux-libc";
 
 // =================================================================================================
 
@@ -72,8 +72,9 @@ pub struct ZygoteHandle
 {
   /// Common handle (process handle + Drop).
   pub base: ZygoteHandleBase,
+  
   /// Runtime end of the control-plane socket pair.
-  pub controlSocket: UnixStream,
+  pub controlSocket: UnixStream
 }
 
 impl Drop for ZygoteHandle
@@ -81,6 +82,7 @@ impl Drop for ZygoteHandle
   fn drop(&mut self) -> ()
   {
     // `base` already kills the process on drop; nothing extra to do.
+    // todo тут что-то было раньше? вроде было. или нужно?
   }
 }
 
@@ -88,7 +90,7 @@ impl Drop for ZygoteHandle
 pub struct RuntimeSide
 {
   /// Data-plane socket — Runtime end.
-  pub socket: UnixStream,
+  pub socket: UnixStream
 }
 
 /// Clone-side data endpoint.
@@ -96,7 +98,7 @@ pub struct CloneSide
 {
   /// Data-plane socket — Clone end.
   #[allow(dead_code)]
-  pub socket: UnixStream,
+  pub socket: UnixStream
 }
 
 /// Bootstrap carried through the control channel from a freshly cloned
@@ -107,8 +109,9 @@ pub struct Bootstrap
 {
   /// PID of the clone at the moment the control channel reported it.
   pub pid: u32,
+  
   /// Raw FD for the data-plane socket, transferred via `SCM_RIGHTS`.
-  pub fd: RawFd,
+  pub fd: RawFd
 }
 
 // =================================================================================================
@@ -125,7 +128,7 @@ impl TransportTrait for Transport
   #[allow(dead_code)]
   fn name() -> &'static str
   {
-    BACKEND_NAME
+    BackendName
   }
 
   /// Spawns the Main Zygote.
@@ -181,6 +184,7 @@ impl TransportTrait for Transport
     Ok(Bootstrap { pid, fd })
   }
 
+  /// todo desc
   fn bootstrapPid(bootstrap: &Self::Bootstrap) -> u32
   {
     bootstrap.pid
@@ -197,7 +201,7 @@ impl TransportTrait for Transport
   fn zygoteControlLoop(_flag: Option<String>) -> !
   {
     let controlSocket: UnixStream =
-      unsafe { UnixStream::from_raw_fd(libc::STDIN_FILENO) };
+      unsafe{ UnixStream::from_raw_fd(libc::STDIN_FILENO) };
 
     // Important: Ignoring SIGCHLD is needed only in the main Zygote.
     // This makes the OS kernel automatically clean up its clones on
@@ -205,7 +209,7 @@ impl TransportTrait for Transport
     // Runtime: there, `waitpid` in `supervisorLoop` tracks the Zygote
     // process itself, and with SIG_IGN it would fail with ECHILD and
     // enter guaranteed CPU load.
-    unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN); }
+    unsafe{ libc::signal(libc::SIGCHLD, libc::SIG_IGN); }
 
     zygoteLoop(controlSocket);
   }
@@ -221,7 +225,7 @@ impl TransportTrait for Transport
   /// Wraps the FD received via `SCM_RIGHTS` back into a `UnixStream`.
   fn runtimeConnect(bootstrap: Self::Bootstrap) -> io::Result<Self::RuntimeSide>
   {
-    let socket: UnixStream = unsafe { UnixStream::from_raw_fd(bootstrap.fd) };
+    let socket: UnixStream = unsafe{ UnixStream::from_raw_fd(bootstrap.fd) };
     Ok(RuntimeSide { socket })
   }
 }
@@ -230,6 +234,7 @@ impl TransportTrait for Transport
 
 impl RuntimeSideTrait for RuntimeSide
 {
+  /// todo desc
   fn send(&self, request: &FFIRequest) -> Result<(), String>
   {
     let bytes: Vec<u8> = encode(request).map_err(|e| e.to_string())?;
@@ -237,6 +242,7 @@ impl RuntimeSideTrait for RuntimeSide
       .map_err(|e| format!("Zygote clone IPC failed while sending request: {e}"))
   }
 
+  /// todo desc
   fn recv(&self) -> Result<FFIResponse, String>
   {
     let bytes: Vec<u8> = readMessage(self.socket.as_raw_fd())
@@ -299,15 +305,15 @@ fn zygoteLoop(controlSocket: UnixStream) -> !
         }
       };
 
-    match unsafe { libc::fork() }
+    match unsafe{ libc::fork() }
     {
-      -1 => {
-        // Fork failed — drop both ends, wait for the next request.
+      -1 => 
+      { // Fork failed — drop both ends, wait for the next request.
         drop(dataForRuntime);
         drop(dataForClone);
       }
-      0 => {
-        // Zygote clone: close the Runtime end of data plane, close our
+      0 => 
+      { // Zygote clone: close the Runtime end of data plane, close our
         // (inherited) control plane, and enter the loop. The control plane
         // is parent-only on Linux; clones don't speak it.
         drop(dataForRuntime);
@@ -317,8 +323,8 @@ fn zygoteLoop(controlSocket: UnixStream) -> !
           Box::leak(Box::new(FxHashMap::default()));
         cloneLoop(dataForClone, cache);
       }
-      pid => {
-        // Main zygote: close the clone end of data plane, send PID and the
+      pid => 
+      { // Main zygote: close the clone end of data plane, send PID and the
         // Runtime end's FD back over the control plane.
         drop(dataForClone);
         let pidBytes: [u8; 4] = (pid as u32).to_le_bytes();
@@ -410,7 +416,7 @@ fn sendAll(fd: RawFd, mut buf: &[u8]) -> io::Result<()>
 {
   while !buf.is_empty()
   {
-    let n: libc::ssize_t = unsafe {
+    let n: libc::ssize_t = unsafe{
       libc::send(
         fd,
         buf.as_ptr() as *const _,
@@ -445,7 +451,7 @@ fn recvExact(fd: RawFd, dst: &mut [u8]) -> io::Result<()>
   let mut filled: usize = 0;
   while filled < dst.len()
   {
-    let n: libc::ssize_t = unsafe {
+    let n: libc::ssize_t = unsafe{
       libc::recv(
         fd,
         dst[filled..].as_mut_ptr() as *mut _,
@@ -481,7 +487,7 @@ fn sendFd(socketFd: RawFd, fd: RawFd) -> io::Result<()>
 {
   // According to the POSIX standard, at least 1 byte of actual data is
   // required to send cmsg.
-  let mut msgHeader: libc::msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+  let mut msgHeader: libc::msghdr = unsafe{ MaybeUninit::zeroed().assume_init() };
   let mut dummyByte: [u8; 1] = [0u8; 1];
 
   let mut ioVector: libc::iovec = libc::iovec {
@@ -491,8 +497,7 @@ fn sendFd(socketFd: RawFd, fd: RawFd) -> io::Result<()>
 
   // Allocate memory for the ancillary message and pack the FD into the
   // SCM_RIGHTS structure.
-  let cmsgSpace: u32 =
-    unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as u32) };
+  let cmsgSpace: u32 = unsafe{ libc::CMSG_SPACE(size_of::<RawFd>() as u32) };
   let mut cmsgBuffer: Vec<u8> = vec![0u8; cmsgSpace as usize];
 
   msgHeader.msg_iov = &mut ioVector;
@@ -500,20 +505,19 @@ fn sendFd(socketFd: RawFd, fd: RawFd) -> io::Result<()>
   msgHeader.msg_control = cmsgBuffer.as_mut_ptr() as *mut _;
   msgHeader.msg_controllen = cmsgBuffer.len() as _;
 
-  unsafe {
+  unsafe{
     let cmsg: *mut libc::cmsghdr = libc::CMSG_FIRSTHDR(&msgHeader);
     (*cmsg).cmsg_level = libc::SOL_SOCKET;
     (*cmsg).cmsg_type = libc::SCM_RIGHTS;
     (*cmsg).cmsg_len =
-      libc::CMSG_LEN(std::mem::size_of::<RawFd>() as u32) as _;
+      libc::CMSG_LEN(size_of::<RawFd>() as u32) as _;
 
     let fdPtr: *mut RawFd = libc::CMSG_DATA(cmsg) as *mut RawFd;
     fdPtr.write_unaligned(fd);
   }
 
   // Send the control packet through the kernel system call.
-  let result: libc::ssize_t =
-    unsafe { libc::sendmsg(socketFd, &msgHeader, 0) };
+  let result: libc::ssize_t = unsafe{ libc::sendmsg(socketFd, &msgHeader, 0) };
   if result < 0
   {
     Err(io::Error::last_os_error())
@@ -526,7 +530,7 @@ fn sendFd(socketFd: RawFd, fd: RawFd) -> io::Result<()>
 fn recvFd(socketFd: RawFd) -> io::Result<RawFd>
 {
   // Prepare buffers to receive the dummy byte and the ancillary header.
-  let mut msgHeader: libc::msghdr = unsafe { MaybeUninit::zeroed().assume_init() };
+  let mut msgHeader: libc::msghdr = unsafe{ MaybeUninit::zeroed().assume_init() };
   let mut dummyByte: [u8; 1] = [0u8; 1];
 
   let mut ioVector: libc::iovec = libc::iovec {
@@ -534,8 +538,7 @@ fn recvFd(socketFd: RawFd) -> io::Result<RawFd>
     iov_len: 1
   };
 
-  let cmsgSpace: u32 =
-    unsafe { libc::CMSG_SPACE(std::mem::size_of::<RawFd>() as u32) };
+  let cmsgSpace: u32 = unsafe{ libc::CMSG_SPACE(size_of::<RawFd>() as u32) };
   let mut cmsgBuffer: Vec<u8> = vec![0u8; cmsgSpace as usize];
 
   msgHeader.msg_iov = &mut ioVector;
@@ -544,15 +547,14 @@ fn recvFd(socketFd: RawFd) -> io::Result<RawFd>
   msgHeader.msg_controllen = cmsgBuffer.len() as _;
 
   // Read the message from the socket.
-  let result: libc::ssize_t =
-    unsafe { libc::recvmsg(socketFd, &mut msgHeader as *mut _, 0) };
+  let result: libc::ssize_t = unsafe{ libc::recvmsg(socketFd, &mut msgHeader as *mut _, 0) };
   if result <= 0
   {
     return Err(io::Error::last_os_error());
   }
 
   // Check for access permissions and extract the received descriptor.
-  unsafe {
+  unsafe{
     let cmsg: *mut libc::cmsghdr = libc::CMSG_FIRSTHDR(&msgHeader);
     if cmsg.is_null() || (*cmsg).cmsg_type != libc::SCM_RIGHTS
     {

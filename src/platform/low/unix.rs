@@ -1,6 +1,6 @@
-//! Unix implementation of the [`crate::sys`] layer.
+//! Unix implementation of the [`crate::platform::low`] layer.
 // =================================================================================================
-use crate::sys::ProcessId;
+use crate::platform::low::ProcessId;
 use std::ffi::c_void;
 // =================================================================================================
 
@@ -68,7 +68,7 @@ pub fn allocate(length: usize) -> *mut c_void
 }
 
 /// `posix_memalign`. `alignment` is already normalized to a power of two
-/// no smaller than [`crate::sys::MinAlignment`].
+/// no smaller than [`crate::platform::low::MinAlignment`].
 pub fn allocateAligned(length: usize, alignment: usize) -> Result<*mut c_void, String>
 {
   let mut pointer: *mut c_void = std::ptr::null_mut();

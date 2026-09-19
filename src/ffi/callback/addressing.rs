@@ -8,7 +8,7 @@ use std::hash::Hasher;
 #[doc(hidden)]
 pub fn moduleBase() -> usize
 {
-  crate::sys::moduleBase()
+  crate::platform::low::moduleBase()
 }
 
 /// Turns an absolute function pointer (in *this* process) into an offset.

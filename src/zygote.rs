@@ -15,7 +15,7 @@
 
 pub use crate::platform::ipc::{FFIRequest, FFIResponse, ZygoteFlag};
 use crate::platform::ipc::RuntimeSide as RuntimeSideTrait;
-use crate::sys;
+use crate::platform;
 use parking_lot::{Mutex, MutexGuard};
 use std::cell::RefCell;
 use std::env;
@@ -150,7 +150,7 @@ impl Drop for ClonedZygote
   /// the main zygote is not affected.
   fn drop(&mut self) -> ()
   {
-    sys::killProcess(self.pid);
+    platform::low::killProcess(self.pid);
   }
 }
 
@@ -243,7 +243,7 @@ fn supervisorLoop() -> ()
       mutex.lock().pid()
     };
 
-    sys::waitProcess(pidToWait);
+    platform::low::waitProcess(pidToWait);
 
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock();

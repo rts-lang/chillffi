@@ -19,7 +19,7 @@ use super::{
   RuntimeSide as RuntimeSideTrait, ZygoteHandleBase
 };
 use super::Transport as TransportTrait;
-use crate::sys::{self, Handle, ProcessId};
+use crate::platform::low;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
 use bincode::config::Configuration;
@@ -39,7 +39,7 @@ use crate::zygote::ZygoteFlag;
 pub const CloneFlag: &str = "__zygoteClone";
 
 /// Backend tag used in diagnostics.
-const BACKEND_NAME: &str = "windows-rtlcloneuserprocess";
+const BackendName: &str = "windows-rtlcloneuserprocess";
 
 // =================================================================================================
 
@@ -58,6 +58,7 @@ pub enum ZygoteReply
   /// Clone is ready: named-pipe *name* only — no handle OOB.
   /// Runtime connects with `CreateFile`; clone already listens.
   Clone { pid: u32, dataPipe: String },
+  
   /// `ipc::channel()` or `cloneProcess()` failed inside Main Zygote.
   SpawnFailed
 }
@@ -66,7 +67,10 @@ pub enum ZygoteReply
 #[derive(Serialize, Deserialize)]
 struct BootstrapToRuntime
 {
+  /// todo desc
   commandTx: IpcSender<ZygoteCommand>,
+
+  /// todo desc
   replyRx: IpcReceiver<ZygoteReply>
 }
 
@@ -74,6 +78,7 @@ struct BootstrapToRuntime
 #[derive(Serialize, Deserialize)]
 struct CloneBootstrap
 {
+  /// todo desc
   dataPipe: String
 }
 
@@ -97,7 +102,7 @@ pub struct ZygoteHandle
 pub struct RuntimeSide
 {
   /// Connected end of the clone's named pipe.
-  pub dataPipe: Handle
+  pub dataPipe: low::Handle
 }
 
 // SAFETY: a Windows `HANDLE` is a kernel object handle owned by this
@@ -113,7 +118,7 @@ unsafe impl Send for RuntimeSide {}
 pub struct CloneSide
 {
   /// Accepted end of the clone's named pipe.
-  pub dataPipe: Handle
+  pub dataPipe: low::Handle
 }
 
 // SAFETY: see `RuntimeSide`. The clone is single-threaded by construction
@@ -126,7 +131,10 @@ unsafe impl Send for CloneSide {}
 #[derive(Serialize, Deserialize)]
 pub struct Bootstrap
 {
+  /// todo desc
   pub pid: u32,
+
+  /// todo desc
   pub dataPipe: String
 }
 
@@ -144,7 +152,7 @@ impl TransportTrait for Transport
   #[allow(dead_code)]
   fn name() -> &'static str
   {
-    BACKEND_NAME
+    BackendName
   }
 
   /// Spawns the Main Zygote and bootstraps the control channel.
@@ -204,6 +212,7 @@ impl TransportTrait for Transport
     }
   }
 
+  /// todo desc
   fn bootstrapPid(bootstrap: &Self::Bootstrap) -> u32
   {
     bootstrap.pid
@@ -229,9 +238,10 @@ impl TransportTrait for Transport
     cloneBootstrapLoop(serverName)
   }
 
+  /// todo desc
   fn runtimeConnect(bootstrap: Self::Bootstrap) -> io::Result<Self::RuntimeSide>
   {
-    let h: Handle = sys::connectPipeClient(&bootstrap.dataPipe).ok_or_else(
+    let h: low::Handle = low::connectPipeClient(&bootstrap.dataPipe).ok_or_else(
       || io::Error::other("connect data pipe failed")
     )?;
     Ok(RuntimeSide { dataPipe: h })
@@ -242,30 +252,32 @@ impl TransportTrait for Transport
 
 impl RuntimeSideTrait for RuntimeSide
 {
+  /// todo desc
   fn send(&self, request: &FFIRequest) -> Result<(), String>
   {
     let config: Configuration = bincode::config::standard();
     let bytes: Vec<u8> = bincode::serde::encode_to_vec(request, config)
       .map_err(|e| format!("serialize FFIRequest: {e}"))?;
 
-    if !sys::pipeSend(self.dataPipe, &bytes) {
+    if !low::pipeSend(self.dataPipe, &bytes) {
       return Err(format!(
         "Zygote clone IPC failed while sending request: pipe write failed \
          (GetLastError={})",
-        sys::lastPipeError()
+        low::lastPipeError()
       ));
     }
     Ok(())
   }
 
+  /// todo desc
   fn recv(&self) -> Result<FFIResponse, String>
   {
     let config: Configuration = bincode::config::standard();
-    let responseBytes: Vec<u8> = sys::pipeRecv(self.dataPipe).ok_or_else(|| {
+    let responseBytes: Vec<u8> = low::pipeRecv(self.dataPipe).ok_or_else(|| {
       format!(
         "Zygote clone IPC failed while reading response: pipe read failed \
          (GetLastError={})",
-        sys::lastPipeError()
+        low::lastPipeError()
       )
     })?;
     let (resp, _) = bincode::serde::decode_from_slice(&responseBytes, config)
@@ -287,7 +299,7 @@ impl CloneSideTrait for CloneSide
 
     loop
     {
-      let bytes: Vec<u8> = match sys::pipeRecv(dataPipe) {
+      let bytes: Vec<u8> = match low::pipeRecv(dataPipe) {
         Some(b) => b,
         None => std::process::exit(0)
       };
@@ -309,14 +321,14 @@ impl CloneSideTrait for CloneSide
           Err(_) => crate::ffi::errors::FFIError::Other(
             "clone panicked while handling request".into()
           )
-          .pipe_err()
+          .pipeErr()
         };
 
       let out = match bincode::serde::encode_to_vec(&response, cfg) {
         Ok(v) => v,
         Err(_) => std::process::exit(1)
       };
-      if !sys::pipeSend(dataPipe, &out) {
+      if !low::pipeSend(dataPipe, &out) {
         std::process::exit(0);
       }
     }
@@ -326,10 +338,7 @@ impl CloneSideTrait for CloneSide
 // =================================================================================================
 
 /// Handles an incoming request and performs an FFI operation using the library cache.
-fn handleRequest(
-  request: FFIRequest,
-  cache: &mut FxHashMap<String, Library>
-) -> FFIResponse
+fn handleRequest(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> FFIResponse
 {
   match executeFFI(request, cache)
   {
@@ -343,14 +352,14 @@ fn handleRequest(
 /// Main zygote loop.
 fn zygoteLoop(serverName: String) -> !
 {
-  sys::ignoreChildExits();
+  low::ignoreChildExits();
 
   // Resolve the ntdll CSR data block [CsrServerApiRoutine .. RtlpEnvironLookupTable)
   // and kernelbase!CtrlRoutine once, in the healthy zygote, BEFORE any clone is
   // spawned. Children inherit the cached addresses via CoW and use them in
   // `reconnectCsr()` to zero the stale block, call CsrClientConnectToServer
   // for BASESRV + USERSRV, and RtlRegisterThreadWithCsrss. No-op on Unix.
-  sys::resolveCsrPortHandle();
+  low::resolveCsrPortHandle();
 
   let (commandTx, commandRx): (
     IpcSender<ZygoteCommand>,
@@ -400,14 +409,14 @@ fn zygoteLoop(serverName: String) -> !
           }
         };
 
-        let spawned: Option<u32> = match sys::cloneProcess() {
+        let spawned: Option<u32> = match low::cloneProcess() {
           Ok(result) => {
-            let pid: ProcessId = result.pid;
+            let pid: low::ProcessId = result.pid;
             // Thread already running (no CREATE_SUSPENDED).
-            sys::closeCloneHandles(&result);
+            low::closeCloneHandles(&result);
             Some(pid)
           }
-          Err(sys::StatusProcessCloned) => {
+          Err(low::StatusProcessCloned) => {
             std::mem::forget(cloneServer);
             std::mem::forget(commandRx);
             std::mem::forget(replyTx);
@@ -423,7 +432,7 @@ fn zygoteLoop(serverName: String) -> !
             // thread with RtlRegisterThreadWithCsrss. Best-effort: if
             // symbols were never resolved, we proceed anyway — same
             // failure mode as before this fix.
-            let csrOk: bool = sys::reconnectCsr();
+            let csrOk: bool = low::reconnectCsr();
 
             // reattachConsole goes through Win32 → CSRSS. If CSR was
             // not reconnected (ARM64 without a resolved block), the
@@ -431,9 +440,9 @@ fn zygoteLoop(serverName: String) -> !
             // the clone never reaches cloneBootstrapLoop, and the
             // parent blocks forever on cloneServer.accept().
             if csrOk {
-              sys::reattachConsole();
+              low::reattachConsole();
             }
-            sys::silenceCrashReporting();
+            low::silenceCrashReporting();
             cloneBootstrapLoop(cloneServerName)
           }
           Err(_) => None
@@ -450,7 +459,7 @@ fn zygoteLoop(serverName: String) -> !
         ) = match cloneServer.accept() {
           Ok(v) => v,
           Err(_) => {
-            sys::killProcess(pid);
+            low::killProcess(pid);
             let _ = replyTx.send(ZygoteReply::SpawnFailed);
             continue;
           }
@@ -468,11 +477,11 @@ fn zygoteLoop(serverName: String) -> !
 /// Bootstrap loop in a freshly cloned process.
 fn cloneBootstrapLoop(serverName: String) -> !
 {
-  let myPid: u32 = sys::currentProcessId();
-  let pipeName: String = sys::cloneDataPipeName(myPid);
+  let myPid: u32 = low::currentProcessId();
+  let pipeName: String = low::cloneDataPipeName(myPid);
 
   // Create the duplex server BEFORE advertising the name.
-  let dataPipe: Handle = match sys::createPipeServer(&pipeName) {
+  let dataPipe: low::Handle = match low::createPipeServer(&pipeName) {
     Some(h) => h,
     None => std::process::exit(1)
   };
@@ -488,7 +497,7 @@ fn cloneBootstrapLoop(serverName: String) -> !
   drop(bootstrapTx);
 
   // Block until Runtime connects.
-  if !sys::acceptPipeClient(dataPipe) {
+  if !low::acceptPipeClient(dataPipe) {
     std::process::exit(1);
   }
 
@@ -504,22 +513,25 @@ pub fn runAsClone() -> !
     .nth(2)
     .expect("zygote clone: missing IpcOneShotServer name (argv[2])");
 
-  sys::silenceCrashReporting();
+  low::silenceCrashReporting();
   cloneBootstrapLoop(serverName)
 }
 
 // =================================================================================================
 
-/// Helper extension trait — `FFIError::pipe_err()` produces an `FFIResponse::Err`.
 trait PipeErr
 {
-  fn pipe_err(self) -> FFIResponse;
+  /// todo desc
+  fn pipeErr(self) -> FFIResponse;
 }
 
 impl PipeErr for crate::ffi::errors::FFIError
 {
-  fn pipe_err(self) -> FFIResponse
+  /// todo desc
+  fn pipeErr(self) -> FFIResponse
   {
     FFIResponse::Err(self)
   }
 }
+
+// =================================================================================================

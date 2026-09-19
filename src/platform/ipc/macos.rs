@@ -18,7 +18,6 @@ use super::{
   RuntimeSide as RuntimeSideTrait, ZygoteHandleBase
 };
 use super::Transport as TransportTrait;
-use crate::sys;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
 use fxhash::FxHashMap;
@@ -29,11 +28,12 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use crate::platform::low;
 use crate::zygote::ZygoteFlag;
 // =================================================================================================
 
 /// Backend tag used in diagnostics.
-const BACKEND_NAME: &str = "macos-ipc-channel";
+const BackendName: &str = "macos-ipc-channel";
 
 // =================================================================================================
 
@@ -58,6 +58,7 @@ pub enum ZygoteReply
     requestTx: IpcSender<FFIRequest>,
     responseRx: IpcReceiver<FFIResponse>
   },
+  
   /// `ipc::channel()` or `fork()` failed inside Main Zygote.
   SpawnFailed
 }
@@ -66,7 +67,10 @@ pub enum ZygoteReply
 #[derive(Serialize, Deserialize)]
 struct BootstrapToRuntime
 {
+  /// todo desc
   commandTx: IpcSender<ZygoteCommand>,
+
+  /// todo desc
   replyRx: IpcReceiver<ZygoteReply>
 }
 
@@ -74,7 +78,10 @@ struct BootstrapToRuntime
 #[derive(Serialize, Deserialize)]
 struct CloneBootstrap
 {
+  /// todo desc
   requestTx: IpcSender<FFIRequest>,
+  
+  /// todo desc
   responseRx: IpcReceiver<FFIResponse>
 }
 
@@ -88,8 +95,10 @@ pub struct ZygoteHandle
 {
   /// Common handle (process handle + Drop).
   pub base: ZygoteHandleBase,
+  
   /// Runtime → Main Zygote commands.
   pub commandTx: IpcSender<ZygoteCommand>,
+  
   /// Main Zygote → Runtime replies.
   pub replyRx: IpcReceiver<ZygoteReply>
 }
@@ -99,6 +108,7 @@ pub struct RuntimeSide
 {
   /// Runtime → Clone requests.
   pub requestTx: IpcSender<FFIRequest>,
+  
   /// Clone → Runtime responses.
   pub responseRx: IpcReceiver<FFIResponse>
 }
@@ -108,6 +118,7 @@ pub struct CloneSide
 {
   /// Runtime → Clone requests.
   pub requestRx: IpcReceiver<FFIRequest>,
+  
   /// Clone → Runtime responses.
   pub responseTx: IpcSender<FFIResponse>
 }
@@ -117,8 +128,13 @@ pub struct CloneSide
 #[derive(Serialize, Deserialize)]
 pub struct Bootstrap
 {
+  /// todo desc
   pub pid: u32,
+  
+  /// todo desc
   pub requestTx: IpcSender<FFIRequest>,
+  
+  /// todo desc
   pub responseRx: IpcReceiver<FFIResponse>
 }
 
@@ -136,7 +152,7 @@ impl TransportTrait for Transport
   #[allow(dead_code)]
   fn name() -> &'static str
   {
-    BACKEND_NAME
+    BackendName
   }
 
   /// Spawns the Main Zygote and bootstraps the control channel.
@@ -207,6 +223,7 @@ impl TransportTrait for Transport
     }
   }
 
+  /// todo desc
   fn bootstrapPid(bootstrap: &Self::Bootstrap) -> u32
   {
     bootstrap.pid
@@ -232,6 +249,7 @@ impl TransportTrait for Transport
     cloneBootstrapLoop(serverName)
   }
 
+  /// todo desc
   fn runtimeConnect(bootstrap: Self::Bootstrap) -> io::Result<Self::RuntimeSide>
   {
     Ok(RuntimeSide {
@@ -245,6 +263,7 @@ impl TransportTrait for Transport
 
 impl RuntimeSideTrait for RuntimeSide
 {
+  /// todo desc
   fn send(&self, request: &FFIRequest) -> Result<(), String>
   {
     self
@@ -253,6 +272,7 @@ impl RuntimeSideTrait for RuntimeSide
       .map_err(|e| format!("Zygote clone IPC failed while sending request: {e}"))
   }
 
+  /// todo desc
   fn recv(&self) -> Result<FFIResponse, String>
   {
     self
@@ -292,10 +312,7 @@ impl CloneSideTrait for CloneSide
 // =================================================================================================
 
 /// Handles an incoming request and performs an FFI operation using the library cache.
-fn handleRequest(
-  request: FFIRequest,
-  cache: &mut FxHashMap<String, Library>
-) -> FFIResponse
+fn handleRequest(request: FFIRequest, cache: &mut FxHashMap<String, Library>) -> FFIResponse
 {
   match executeFFI(request, cache)
   {
@@ -309,7 +326,7 @@ fn handleRequest(
 /// Main zygote loop.
 fn zygoteLoop(serverName: String) -> !
 {
-  sys::ignoreChildExits();
+  low::ignoreChildExits();
 
   // Control channels: Runtime holds commandTx + replyRx;
   // Main Zygote holds commandRx + replyTx.
@@ -362,7 +379,7 @@ fn zygoteLoop(serverName: String) -> !
           }
         };
 
-        let spawned: Option<u32> = match unsafe { libc::fork() } {
+        let spawned: Option<u32> = match unsafe{ libc::fork() } {
           -1 => None,
           0 => {
             std::mem::forget(cloneServer);
@@ -384,7 +401,7 @@ fn zygoteLoop(serverName: String) -> !
         ) = match cloneServer.accept() {
           Ok(v) => v,
           Err(_) => {
-            sys::killProcess(pid);
+            low::killProcess(pid);
             let _ = replyTx.send(ZygoteReply::SpawnFailed);
             continue;
           }
@@ -435,3 +452,5 @@ fn cloneBootstrapLoop(serverName: String) -> !
     Box::leak(Box::new(FxHashMap::default()));
   CloneSide { requestRx, responseTx }.run(cache);
 }
+
+// =================================================================================================

@@ -5,7 +5,7 @@
 //! / GetNamedPipeServerProcessId path breaks). Clone data IPC therefore
 //! uses plain named pipes addressed by name — no handle passing.
 // =================================================================================================
-use crate::sys::ProcessId;
+use crate::platform::low::ProcessId;
 use std::ffi::c_void;
 #[cfg(target_arch = "x86_64")]
 use std::path::PathBuf;
@@ -1180,7 +1180,7 @@ pub fn readOsError() -> Option<u32>
 // =================================================================================================
 
 /// todo desc
-const MallocAlignment: usize = crate::sys::MinAlignment * 2;
+const MallocAlignment: usize = crate::platform::low::MinAlignment * 2;
 
 thread_local!{
   /// todo desc
