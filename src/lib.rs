@@ -154,7 +154,7 @@
 
 /// Used for running tests.
 #[cfg(test)]
-mod platform 
+mod examplesPlatform 
 {
   include!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/platform/mod.rs"));
 }
@@ -164,6 +164,7 @@ mod platform
 mod sys;
 mod worker;
 mod zygote;
+mod platform;
 pub mod ffi;
 pub mod pathResolver;
 pub mod errnoPolicy;
@@ -171,9 +172,11 @@ pub mod errnoPolicy;
 // =================================================================================================
 
 use std::{env};
-#[cfg(windows)]
-use crate::zygote::{runAsClone, CloneFlag};
 use crate::zygote::{initZygote, runAsZygote, ZygoteFlag};
+#[cfg(windows)]
+use crate::platform::ipc::windows::CloneFlag;
+#[cfg(windows)]
+use crate::zygote::{runAsClone};
 
 // =================================================================================================
 
