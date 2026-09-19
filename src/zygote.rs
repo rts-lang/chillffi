@@ -1,6 +1,6 @@
 //! Zygote process orchestration.
 //!
-//! Platform-neutral glue over [`crate::platform::ipc::Transport`]:
+//! Platform-neutral glue over [`ipc::Transport`]:
 //! 1. spawns the Main Zygote ([`initZygote`]),
 //! 2. on entry into the zygote process — enters the platform's control
 //!    loop ([`runAsZygote`]),
@@ -9,13 +9,12 @@
 //! 4. hands out clone handles to callers via [`ClonedZygote::getMeClone`].
 //!
 //! All IPC details — `fork`/`RtlCloneUserProcess`, sockets / Mach ports /
-//! named pipes, `SCM_RIGHTS` vs `ipc-channel` — live behind the
-//! [`crate::platform::ipc::Transport`] trait.
+//! named pipes, `SCM_RIGHTS`, `ipc-channel` — live behind the
+//! [`ipc::Transport`] trait.
 // =================================================================================================
-
 pub use crate::platform::ipc::{FFIRequest, FFIResponse, ZygoteFlag};
-use crate::platform::ipc::RuntimeSide as RuntimeSideTrait;
-use crate::platform;
+use crate::platform::ipc::{RuntimeSide as RuntimeSideTrait, Transport as TransportTrait};
+use crate::platform::low;
 use parking_lot::{Mutex, MutexGuard};
 use std::cell::RefCell;
 use std::env;
@@ -25,15 +24,14 @@ use std::thread;
 // =================================================================================================
 
 #[cfg(target_os = "linux")]
-use crate::platform::ipc::linux as plat;
+use crate::platform::ipc::linux as ipc;
 #[cfg(target_os = "macos")]
-use crate::platform::ipc::macos as plat;
+use crate::platform::ipc::macos as ipc;
 #[cfg(windows)]
-use crate::platform::ipc::windows as plat;
+use crate::platform::ipc::windows as ipc;
 
 #[cfg(windows)]
-pub use crate::platform::ipc::windows::{runAsClone};
-
+pub use crate::platform::ipc::windows::runAsClone;
 // =================================================================================================
 
 /* todo
@@ -61,13 +59,14 @@ pub use crate::platform::ipc::windows::{runAsClone};
 
 // =================================================================================================
 
-/// Runtime-side handle to the Main Zygote. Wraps the platform-specific
-/// handle (which already owns the child process — its `Drop` calls
-/// `process.kill()`).
+/// Runtime-side handle to the Main Zygote.
+/// 
+/// Wraps the platform-specific handle (which already owns 
+/// the child process — its `Drop` calls `process.kill()`).
 pub struct ZygoteHandle
 {
   /// todo desc
-  pub inner: plat::ZygoteHandle
+  pub inner: ipc::ZygoteHandle
 }
 
 impl ZygoteHandle
@@ -91,7 +90,7 @@ pub struct ClonedZygote
   pub pid: u32,
 
   /// Platform-specific Runtime-side data endpoint.
-  pub(super) data: plat::RuntimeSide
+  pub(super) data: ipc::RuntimeSide
 }
 
 impl ClonedZygote
@@ -104,8 +103,8 @@ impl ClonedZygote
     })?;
     let guard: MutexGuard<ZygoteHandle> = mutex.lock();
 
-    let bootstrap: plat::Bootstrap =
-      <plat::Transport as crate::platform::ipc::Transport>::sendSpawnClone(
+    let bootstrap: ipc::Bootstrap =
+      <ipc::Transport as TransportTrait>::sendSpawnClone(
         &guard.inner
       )
       .map_err(|e| {
@@ -116,7 +115,7 @@ impl ClonedZygote
       })?;
 
     let pid: u32 =
-      <plat::Transport as crate::platform::ipc::Transport>::bootstrapPid(
+      <ipc::Transport as TransportTrait>::bootstrapPid(
         &bootstrap
       );
 
@@ -128,8 +127,8 @@ impl ClonedZygote
       ));
     }
 
-    let data: plat::RuntimeSide =
-      <plat::Transport as crate::platform::ipc::Transport>::runtimeConnect(
+    let data: ipc::RuntimeSide =
+      <ipc::Transport as TransportTrait>::runtimeConnect(
         bootstrap
       )?;
 
@@ -150,7 +149,7 @@ impl Drop for ClonedZygote
   /// the main zygote is not affected.
   fn drop(&mut self) -> ()
   {
-    platform::low::killProcess(self.pid);
+    low::killProcess(self.pid);
   }
 }
 
@@ -203,15 +202,15 @@ pub fn runAsZygote() -> !
   // Linux ignores it (control plane is `stdin`).
   let flag: Option<String> = env::args().nth(2);
 
-  <plat::Transport as crate::platform::ipc::Transport>::zygoteControlLoop(flag)
+  <ipc::Transport as TransportTrait>::zygoteControlLoop(flag)
 }
 
 /// Zygote initialization; call once,
 /// as the very first line of the normal main().
 pub fn initZygote() -> io::Result<()>
 {
-  let inner: plat::ZygoteHandle =
-    <plat::Transport as crate::platform::ipc::Transport>::spawnZygote()?;
+  let inner: ipc::ZygoteHandle =
+    <ipc::Transport as TransportTrait>::spawnZygote()?;
 
   let handle: ZygoteHandle = ZygoteHandle { inner };
   ZygoteState
@@ -228,7 +227,7 @@ pub fn initZygote() -> io::Result<()>
 /// Supervisor: blocks on the death of the current zygote (`waitpid` /
 /// `WaitForSingleObject` under the hood) and recreates it.
 ///
-/// Separate thread — therefore [`crate::platform::ipc::Transport::spawnZygote`]
+/// Separate thread — therefore [`ipc::Transport::spawnZygote`]
 /// inside must go through `Command`, not `fork()`.
 fn supervisorLoop() -> ()
 {
@@ -243,7 +242,7 @@ fn supervisorLoop() -> ()
       mutex.lock().pid()
     };
 
-    platform::low::waitProcess(pidToWait);
+    low::waitProcess(pidToWait);
 
     let mutex: &Mutex<ZygoteHandle> = ZygoteState.get().unwrap();
     let mut guard: MutexGuard<ZygoteHandle> = mutex.lock();
@@ -269,8 +268,8 @@ fn supervisorLoop() -> ()
 /// (used by the supervisor after a crash).
 fn initZygoteInner() -> io::Result<ZygoteHandle>
 {
-  let inner: plat::ZygoteHandle =
-    <plat::Transport as crate::platform::ipc::Transport>::spawnZygote()?;
+  let inner: ipc::ZygoteHandle =
+    <ipc::Transport as TransportTrait>::spawnZygote()?;
   Ok(ZygoteHandle { inner })
 }
 
