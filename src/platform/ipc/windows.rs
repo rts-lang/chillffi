@@ -14,14 +14,15 @@
 //!   the freshly cloned process before advertising its name. Runtime opens
 //!   the pipe by name.
 // =================================================================================================
+use super::Transport as TransportTrait;
 use super::{
   CloneSide as CloneSideTrait, FFIRequest, FFIResponse,
   RuntimeSide as RuntimeSideTrait, ZygoteHandleBase
 };
-use super::Transport as TransportTrait;
 use crate::platform::low;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
+use crate::zygote::ZygoteFlag;
 use bincode::config::Configuration;
 use fxhash::FxHashMap;
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
@@ -31,7 +32,6 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use crate::zygote::ZygoteFlag;
 // =================================================================================================
 
 /// Hidden startup flag of a legacy Command-based clone (kept for

@@ -13,13 +13,15 @@
 //!   `ipc::channel()` pair, sends the Runtime-facing ends back through the
 //!   one-shot, keeps the opposite ends, and enters the request loop.
 // =================================================================================================
+use super::Transport as TransportTrait;
 use super::{
   CloneSide as CloneSideTrait, FFIRequest, FFIResponse,
   RuntimeSide as RuntimeSideTrait, ZygoteHandleBase
 };
-use super::Transport as TransportTrait;
+use crate::platform::low;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
+use crate::zygote::ZygoteFlag;
 use fxhash::FxHashMap;
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
 use libloading::Library;
@@ -28,8 +30,6 @@ use std::env;
 use std::io;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use crate::platform::low;
-use crate::zygote::ZygoteFlag;
 // =================================================================================================
 
 /// Backend tag used in diagnostics.

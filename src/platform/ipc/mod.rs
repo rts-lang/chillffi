@@ -15,7 +15,6 @@
 //! backend: `serde` + `bincode` on top of whatever byte stream the backend
 //! provides.
 // =================================================================================================
-
 use crate::ffi::errors::FFIError;
 use crate::ffi::types::{Type, Value};
 use fxhash::FxHashMap;
@@ -175,7 +174,7 @@ pub trait Transport: 'static
   type ZygoteHandle: Send + 'static;
 
   /// Short backend name for diagnostics.
-  #[allow(dead_code)] // dispatched through the trait — Clippy can't see calls.
+  #[allow(dead_code)]
   fn name() -> &'static str;
 
   /// Spawns the Main Zygote process and returns its handle (Runtime side).
@@ -201,7 +200,7 @@ pub trait Transport: 'static
   ///
   /// `flag`: the CLI argument the clone was launched with (matches
   /// [`zygoteControlLoop`](Transport::zygoteControlLoop)'s argument).
-  #[allow(dead_code)] // dispatched through the trait — Clippy can't see calls.
+  #[allow(dead_code)]
   fn cloneEnter(flag: Option<String>) -> io::Result<(Self::CloneSide, Self::Bootstrap)>;
 
   /// In Runtime, after receiving [`Bootstrap`](Transport::Bootstrap) from
@@ -215,6 +214,7 @@ pub trait RuntimeSide: Send + 'static
   /// Sends a serialized request. On broken pipe returns an error describing
   /// that the clone has gone away.
   fn send(&self, request: &FFIRequest) -> Result<(), String>;
+  
   /// Receives a serialized response. EOF means the clone died (treated as an
   /// error here — `ClonedZygote::call` converts it into a communication-failed
   /// `FFIError`).
@@ -227,7 +227,7 @@ pub trait CloneSide: Send + 'static
   /// Runs the request/response loop until the Runtime side closes the channel
   /// or a fatal error occurs (clone then `std::process::exit(0)`s — that is
   /// the isolation contract). Never returns.
-  #[allow(dead_code)] // dispatched through the trait — Clippy can't see calls.
+  #[allow(dead_code)]
   fn run(self, cache: &mut FxHashMap<String, Library>) -> !;
 }
 
@@ -239,7 +239,7 @@ pub trait CloneSide: Send + 'static
 pub struct ZygoteHandleBase
 {
   /// The Main Zygote process.
-  pub process: Child,
+  pub process: Child
 }
 
 impl Drop for ZygoteHandleBase

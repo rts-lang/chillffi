@@ -18,11 +18,11 @@
 //!   plane; for the data plane the same framing is used (one message = one
 //!   serialized `FFIRequest` / `FFIResponse`).
 // =================================================================================================
+use super::Transport as TransportTrait;
 use super::{
   CloneSide as CloneSideTrait, FFIRequest, FFIResponse,
-  RuntimeSide as RuntimeSideTrait, ZygoteHandleBase, ZygoteFlag
+  RuntimeSide as RuntimeSideTrait, ZygoteFlag, ZygoteHandleBase
 };
-use super::Transport as TransportTrait;
 use crate::ffi::errors::FFIError;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
