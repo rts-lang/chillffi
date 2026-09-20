@@ -23,10 +23,8 @@ use std::sync::OnceLock;
 use std::thread;
 // =================================================================================================
 
-#[cfg(target_os = "linux")]
-use crate::platform::ipc::linux as ipc;
-#[cfg(target_os = "macos")]
-use crate::platform::ipc::macos as ipc;
+#[cfg(unix)]
+use crate::platform::ipc::unix as ipc;
 #[cfg(windows)]
 use crate::platform::ipc::windows as ipc;
 
