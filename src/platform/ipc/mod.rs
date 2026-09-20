@@ -117,7 +117,7 @@ pub enum FFIRequest
     args: Vec<Value>,
     resultType: Type,
     readErrno: bool
-  },
+  }
 }
 
 /// Response to the request with the execution result or error.

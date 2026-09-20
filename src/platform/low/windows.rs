@@ -266,11 +266,11 @@ unsafe extern "system"
 {
   /// todo desc
   fn RtlCloneUserProcess(
-    ProcessFlags: u32,
-    ProcessSecurityDescriptor: *mut c_void,
-    ThreadSecurityDescriptor: *mut c_void,
-    DebugPort: Handle,
-    ProcessInformation: *mut RtlUserProcessInformation
+    processFlags: u32,
+    processSecurityDescriptor: *mut c_void,
+    threadSecurityDescriptor: *mut c_void,
+    debugPort: Handle,
+    processInformation: *mut RtlUserProcessInformation
   ) -> i32;
   
   /// Undocumented. Re-establishes the ALPC connection to csrss.exe. Lazy: if
@@ -284,11 +284,11 @@ unsafe extern "system"
   /// (NDSS'21, forklib/fork.cpp), cross-checked by reverse-engineering
   /// ntdll!CsrClientConnectToServer.
   fn CsrClientConnectToServer(
-    ObjectDirectory: *const u16,
-    ServerId: u32,
-    ConnectionInfo: *mut c_void,
-    ConnectionInfoLength: u32,
-    CalledFromServer: *mut u8
+    objectDirectory: *const u16,
+    serverId: u32,
+    connectionInfo: *mut c_void,
+    connectionInfoLength: u32,
+    calledFromServer: *mut u8
   ) -> i32;
   
   /// Undocumented. Registers the current thread with CSRSS (CSR_THREAD
@@ -319,7 +319,7 @@ pub const fn ignoreChildExits() -> () {}
 /// todo desc
 pub fn killProcess(pid: low::ProcessId) -> ()
 {
-  let process: Handle = unsafe { OpenProcess(ProcessTerminate, 0, pid) };
+  let process: Handle = unsafe{ OpenProcess(ProcessTerminate, 0, pid) };
   if process.is_null() {
     return;
   }
@@ -436,7 +436,7 @@ pub fn cloneProcess() -> Result<CloneResult, i32>
       ptr::null_mut(),
       ptr::null_mut(),
       ptr::null_mut(),
-      &mut info,
+      &mut info
     )
   };
 
@@ -619,11 +619,11 @@ unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64
 /// BASESRV is tolerant of a NULL pointer in ConnectionInfo.
 unsafe fn resolveCtrlRoutine() -> *mut c_void
 {
-  let kernelbase: Handle = unsafe{ GetModuleHandleA(c"kernelbase.dll".as_ptr().cast()) };
-  if kernelbase.is_null() {
+  let kernelBase: Handle = unsafe{ GetModuleHandleA(c"kernelbase.dll".as_ptr().cast()) };
+  if kernelBase.is_null() {
     return ptr::null_mut();
   }
-  unsafe{ GetProcAddress(kernelbase, c"CtrlRoutine".as_ptr().cast()) }
+  unsafe{ GetProcAddress(kernelBase, c"CtrlRoutine".as_ptr().cast()) }
 }
 
 /// Strategy 1: PDB symbol lookup. Works on Win10/11 x64 where Microsoft
@@ -649,7 +649,7 @@ unsafe fn resolveCsrBlockViaPdb() -> Option<CsrDataBlock>
           cache.display()
         )
           .encode_utf16()
-          .collect(),
+          .collect()
       )
     };
   let searchPathPtr: *const u16 = searchPath.as_ref().map_or(ptr::null(), |v| v.as_ptr());
@@ -983,7 +983,7 @@ pub fn moduleBase() -> usize
     GetModuleHandleExW(
       ModuleHandleFromAddress,
       moduleBase as *const () as *const u16,
-      &mut module,
+      &mut module
     )
   };
   if found == 0 {
