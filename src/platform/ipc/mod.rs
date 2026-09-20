@@ -3,14 +3,17 @@
 //! Each backend implements the same [`Transport`] trait, so [`crate::zygote`]
 //! stays platform-neutral:
 //!
-//! - **Unix** (Linux, macOS): [`self::unix`] — `ipc-channel` on both planes
-//!   (`SCM_RIGHTS` sockets on Linux, Mach ports on macOS).
+//! - **Linux**: [`self::linux`] — `ipc-channel` (`SCM_RIGHTS` sockets under
+//!   the hood). `fork` inherits descriptors, so the data channels of a clone
+//!   are created before the fork and need no workaround.
+//! - **macOS**: [`self::macos`] — `ipc-channel` (Mach ports under the hood;
+//!   the data channels have to be created by the clone after the fork).
 //! - **Windows**: [`self::windows`] — named pipes (handles do not survive
 //!   `RtlCloneUserProcess`, so `ipc-channel` is only used to hand over pipe
 //!   names through the control channel).
 //!
 //! The IPC payload ([`FFIRequest`] / [`FFIResponse`]) is the same on every
-//! backend: `serde` on top of whatever byte stream the backend provides.
+//! backend: `serde` on top of whatever the backend transports.
 // =================================================================================================
 use crate::ffi::errors::FFIError;
 use crate::ffi::types::{Type, Value};
@@ -21,10 +24,15 @@ use std::io;
 use std::process::Child;
 // =================================================================================================
 
-#[cfg(unix)]
-pub mod unix;
-#[cfg(unix)]
-pub use self::unix::Bootstrap as UnixBootstrap;
+#[cfg(target_os = "linux")]
+pub mod linux;
+#[cfg(target_os = "linux")]
+pub use self::linux::Bootstrap as LinuxBootstrap;
+
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "macos")]
+pub use self::macos::Bootstrap as MacosBootstrap;
 
 #[cfg(windows)]
 pub mod windows;
@@ -32,14 +40,17 @@ pub mod windows;
 pub use self::windows::Bootstrap as WindowsBootstrap;
 
 // Convenience alias used by [`crate::zygote`] to pick the active platform's
-// `Bootstrap`. Per-platform aliases (`UnixBootstrap`, `WindowsBootstrap`)
-// are re-exported above.
+// `Bootstrap`. Per-platform aliases (`LinuxBootstrap`, `MacosBootstrap`,
+// `WindowsBootstrap`) are re-exported above.
 // Marked `allow(dead_code)` because only the platform-specific branch is
 // consumed in `zygote.rs`; the inactive branches would otherwise trip
 // `-D warnings`.
 #[allow(dead_code)]
-#[cfg(unix)]
-pub type Bootstrap = UnixBootstrap;
+#[cfg(target_os = "linux")]
+pub type Bootstrap = LinuxBootstrap;
+#[allow(dead_code)]
+#[cfg(target_os = "macos")]
+pub type Bootstrap = MacosBootstrap;
 #[allow(dead_code)]
 #[cfg(windows)]
 pub type Bootstrap = WindowsBootstrap;
@@ -181,7 +192,7 @@ pub trait Transport: 'static
   /// Main Zygote (before any clone exists). Never returns.
   ///
   /// `flag`: optional extra CLI argument used by some backends to bootstrap
-  /// the control channel (e.g. an `IpcOneShotServer` name).
+  /// the control channel (e.g. an `IpcOneShotServer` name on Windows/macOS).
   fn zygoteControlLoop(flag: Option<String>) -> !;
 
   /// In a freshly cloned process: prepares the data endpoint and returns the

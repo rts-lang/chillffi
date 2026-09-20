@@ -1,9 +1,7 @@
-//! Unix backend (Linux, macOS) for [`super::Transport`].
+//! macOS backend for [`super::Transport`].
 //!
-//! Uses `ipc-channel` for both planes: Mach ports on macOS,
-//! `SOCK_SEQPACKET` sockets with `SCM_RIGHTS` on Linux. Hand-rolled
-//! `SCM_RIGHTS` was racy under Darwin's process-port inheritance, and one
-//! implementation for every Unix is easier to keep correct than two.
+//! Uses `ipc-channel` for both planes (Mach ports under the hood — direct
+//! `SCM_RIGHTS` would be racy under Darwin's process-port inheritance).
 //!
 //! - **Control plane** (Runtime ↔ Main Zygote): one `IpcOneShotServer` set up
 //!   in the Runtime; Main Zygote connects with `IpcSender::connect(name)`,
@@ -14,18 +12,6 @@
 //!   Main Zygote just before `libc::fork()`; the clone creates a fresh
 //!   `ipc::channel()` pair, sends the Runtime-facing ends back through the
 //!   one-shot, keeps the opposite ends, and enters the request loop.
-//!
-//! # What a clone does with what it inherits from `fork`
-//!
-//! - The one-shot server is never dropped in the clone. Linux: it owns the
-//!   temporary directory of its socket, dropping the clone's copy would delete
-//!   the socket the clone is about to connect to. macOS: it owns Mach rights
-//!   that do not exist in the child.
-//! - The control ends of Main Zygote (`commandRx`, `replyTx`) are dropped on
-//!   Linux: closing the clone's copies lets the Runtime see EOF when Main
-//!   Zygote dies while clones are alive (otherwise it would wait for a reply
-//!   forever). On macOS they are forgotten: Mach port rights do not survive
-//!   `fork`, so releasing them would deallocate names that are not there.
 // =================================================================================================
 use super::Transport as TransportTrait;
 use super::{
@@ -47,7 +33,7 @@ use std::process::{Child, Command, Stdio};
 // =================================================================================================
 
 /// Backend tag used in diagnostics.
-const BackendName: &str = "unix-ipc-channel";
+const BackendName: &str = "macos-ipc-channel";
 
 // =================================================================================================
 
@@ -101,7 +87,7 @@ struct CloneBootstrap
 
 // =================================================================================================
 
-/// Unix Transport: ipc-channel.
+/// macOS Transport: ipc-channel.
 pub struct Transport;
 
 /// Runtime-side handle to the Main Zygote.
@@ -249,7 +235,7 @@ impl TransportTrait for Transport
   fn zygoteControlLoop(flag: Option<String>) -> !
   {
     let serverName: String =
-      flag.expect("unix::zygoteControlLoop: missing IpcOneShotServer name");
+      flag.expect("macos::zygoteControlLoop: missing IpcOneShotServer name");
     zygoteLoop(serverName)
   }
 
@@ -259,7 +245,7 @@ impl TransportTrait for Transport
   fn cloneEnter(flag: Option<String>) -> io::Result<(Self::CloneSide, Self::Bootstrap)>
   {
     let serverName: String =
-      flag.expect("unix::cloneEnter: missing IpcOneShotServer name");
+      flag.expect("macos::cloneEnter: missing IpcOneShotServer name");
     cloneBootstrapLoop(serverName)
   }
 
@@ -396,18 +382,9 @@ fn zygoteLoop(serverName: String) -> !
         let spawned: Option<u32> = match unsafe{ libc::fork() } {
           -1 => None,
           0 => {
-            // See the module docs: what a clone does with what it inherits.
             std::mem::forget(cloneServer);
-            #[cfg(target_os = "macos")]
-            {
-              std::mem::forget(commandRx);
-              std::mem::forget(replyTx);
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-              drop(commandRx);
-              drop(replyTx);
-            }
+            std::mem::forget(commandRx);
+            std::mem::forget(replyTx);
             cloneBootstrapLoop(cloneServerName)
           }
           pid => Some(pid as u32)
