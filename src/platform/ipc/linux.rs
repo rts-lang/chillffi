@@ -26,6 +26,7 @@ use super::{
   CloneSide as CloneSideTrait, FFIRequest, FFIResponse,
   RuntimeSide as RuntimeSideTrait, ZygoteFlag, ZygoteHandleBase
 };
+use crate::platform::low;
 use crate::worker::executeFFI;
 use crate::worker::{takeLastErrno, takeLastOsError};
 use fxhash::FxHashMap;
@@ -229,31 +230,14 @@ impl TransportTrait for Transport
   ///
   /// `flag`: the `IpcOneShotServer` name passed as `argv[2]`.
   ///
-  /// On Linux `cloneEnter` is never invoked — the child runs the request
-  /// loop directly, because `fork()` hands the clone its ends of the
-  /// data-plane channels as ordinary variables.
+  /// There is no `cloneEnter` on Linux: `fork()` hands the clone its ends of
+  /// the data-plane channels as ordinary variables, and the child runs the
+  /// request loop right in [`zygoteLoop`].
   fn zygoteControlLoop(flag: Option<String>) -> !
   {
     let serverName: String =
       flag.expect("linux::zygoteControlLoop: missing IpcOneShotServer name");
-
-    // Important: Ignoring SIGCHLD is needed only in the main Zygote.
-    // This makes the OS kernel automatically clean up its clones on
-    // termination (without zombies). It must not be written in the main
-    // Runtime: there, `waitpid` in `supervisorLoop` tracks the Zygote
-    // process itself, and with SIG_IGN it would fail with ECHILD and
-    // enter guaranteed CPU load.
-    unsafe{ libc::signal(libc::SIGCHLD, libc::SIG_IGN); }
-
     zygoteLoop(serverName)
-  }
-
-  /// Not used on Linux — see [`Transport::zygoteControlLoop`]. Dispatched
-  /// through the trait, so Clippy sees it as "never used" — silenced here.
-  #[allow(dead_code)]
-  fn cloneEnter(_flag: Option<String>) -> io::Result<(Self::CloneSide, Self::Bootstrap)>
-  {
-    unreachable!("linux::cloneEnter is never called; the child runs the request loop directly")
   }
 
   /// todo desc
@@ -292,13 +276,11 @@ impl RuntimeSideTrait for RuntimeSide
 impl CloneSideTrait for CloneSide
 {
   /// Runs the per-clone request/response loop until the Runtime closes its
-  /// ends or a fatal error occurs. Never returns. Dispatched through the
-  /// trait, so Clippy sees it as "never used" — silenced here.
+  /// ends or a fatal error occurs. Never returns.
   ///
   /// Any I/O error means the Runtime closed the channel (or the clone died) —
   /// the clone `std::process::exit(0)`s and the kernel reaps it (because
   /// `SIGCHLD` is ignored in Main Zygote).
-  #[allow(dead_code)]
   fn run(self, cache: &mut FxHashMap<String, Library>) -> !
   {
     let Self { requestRx, responseTx } = self;
@@ -342,6 +324,8 @@ fn handleRequest(request: FFIRequest, cache: &mut FxHashMap<String, Library>) ->
 /// `dlopen` only works with the forked zygote.
 fn zygoteLoop(serverName: String) -> !
 {
+  low::ignoreChildExits();
+
   // Control channels: Runtime holds commandTx + replyRx;
   // Main Zygote holds commandRx + replyTx.
   let (commandTx, commandRx): (

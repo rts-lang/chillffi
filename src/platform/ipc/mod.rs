@@ -153,9 +153,11 @@ pub enum FFIResponse
 ///    gets back a control-plane handle.
 /// 2. [`zygoteControlLoop`](Transport::zygoteControlLoop) — Main Zygote runs
 ///    its command loop forever, servicing `SpawnClone` requests.
-/// 3. [`cloneEnter`](Transport::cloneEnter) — a freshly cloned process prepares
-///    its data endpoint and produces the [`Bootstrap`](Transport::Bootstrap)
-///    that will be forwarded through the control channel back to the Runtime.
+/// 3. [`cloneEnter`](Transport::cloneEnter) — optional: a freshly cloned
+///    process prepares its data endpoint and produces the
+///    [`Bootstrap`](Transport::Bootstrap) that will be forwarded through the
+///    control channel back to the Runtime. Backends whose clones get their
+///    endpoints by inheritance (Linux) do not have this step.
 /// 4. [`runtimeConnect`](Transport::runtimeConnect) — Runtime rebuilds the
 ///    data endpoint from the bootstrap it received.
 ///
@@ -200,8 +202,17 @@ pub trait Transport: 'static
   ///
   /// `flag`: the CLI argument the clone was launched with (matches
   /// [`zygoteControlLoop`](Transport::zygoteControlLoop)'s argument).
+  ///
+  /// Optional: backends whose clones inherit their endpoints from the
+  /// fork have nothing to prepare and keep this default.
   #[allow(dead_code)]
-  fn cloneEnter(flag: Option<String>) -> io::Result<(Self::CloneSide, Self::Bootstrap)>;
+  fn cloneEnter(_flag: Option<String>) -> io::Result<(Self::CloneSide, Self::Bootstrap)>
+  {
+    Err(io::Error::new(
+      io::ErrorKind::Unsupported,
+      "this backend does not enter clones: they inherit their endpoints"
+    ))
+  }
 
   /// In Runtime, after receiving [`Bootstrap`](Transport::Bootstrap) from
   /// the clone via the control channel: rebuilds the data endpoint.
