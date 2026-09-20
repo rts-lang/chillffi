@@ -8,9 +8,7 @@
 //!    ([`supervisorLoop`]),
 //! 4. hands out clone handles to callers via [`ClonedZygote::getMeClone`].
 //!
-//! All IPC details — `fork`/`RtlCloneUserProcess`, sockets / Mach ports /
-//! named pipes, `SCM_RIGHTS`, `ipc-channel` — live behind the
-//! [`ipc::Transport`] trait.
+//! All IPC details are hidden behind the [`ipc::Transport`] trait.
 // =================================================================================================
 pub use crate::platform::ipc::{FFIRequest, FFIResponse, ZygoteFlag};
 use crate::platform::ipc::{RuntimeSide as RuntimeSideTrait, Transport as TransportTrait};
@@ -32,6 +30,7 @@ use crate::platform::ipc::windows as ipc;
 
 #[cfg(windows)]
 pub use crate::platform::ipc::windows::runAsClone;
+
 // =================================================================================================
 
 /* todo
