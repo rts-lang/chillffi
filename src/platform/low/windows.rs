@@ -9,7 +9,7 @@ use std::ffi::c_void;
 #[cfg(target_arch = "x86_64")]
 use std::path::PathBuf;
 use std::ptr;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 use crate::platform::low;
 // =================================================================================================
@@ -474,7 +474,8 @@ pub fn closeCloneHandles(result: &CloneResult) -> ()
 {
   closeHandle(result.threadHandle);
 
-  let mut recent = RecentCloneProcesses.lock().unwrap_or_else(PoisonError::into_inner);
+  let mut recent: MutexGuard< Vec<usize> > = 
+    RecentCloneProcesses.lock().unwrap_or_else(PoisonError::into_inner);
   recent.push(result.processHandle as usize);
   if recent.len() > RecentCloneProcessesLimit {
     closeHandle(recent.remove(0) as Handle);
@@ -605,7 +606,7 @@ unsafe fn lookupSymbol(process: Handle, names: &[&std::ffi::CStr]) -> Option<u64
     let mut info: SymbolInfo = unsafe{ std::mem::zeroed() };
     info.sizeOfStruct = 88; // sizeof(SYMBOL_INFO) with Name[1], x64
     info.maxNameLen = 2000;
-    let ok = unsafe{ SymFromName(process, name.as_ptr(), &mut info) };
+    let ok: i32 = unsafe{ SymFromName(process, name.as_ptr(), &mut info) };
     if ok != 0 {
       return Some(info.address);
     }
@@ -708,7 +709,7 @@ unsafe fn resolveCsrBlockViaDisasm() -> Option<CsrDataBlock>
     return None;
   }
 
-  let csrProcessIdAddr = unsafe{ decodeCsrProcessIdLoad(fnAddr) }?;
+  let csrProcessIdAddr: usize = unsafe{ decodeCsrProcessIdLoad(fnAddr) }?;
   let base: usize = csrProcessIdAddr.checked_sub(CsrProcessIdOffset)?;
   let ctrlRoutine: *mut c_void = unsafe{ resolveCtrlRoutine() };
 

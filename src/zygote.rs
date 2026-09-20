@@ -290,7 +290,7 @@ mod tests
   {
     let result: Result<(), FFIError> = ffi!(|scope| {
       scope.addSearchPath("examples/isolation");
-      let lib = scope.load(platformExt!("libcrash"))?;
+      let lib: Library = scope.load(platformExt!("libcrash"))?;
       lib.call("triggerSegfault").void()
     });
 
@@ -308,7 +308,7 @@ mod tests
   {
     let result: Result<(), FFIError> = ffi!(|scope| {
       scope.addSearchPath("examples/isolation");
-      let lib = scope.load(platformExt!("libcrash"))?;
+      let lib: Library = scope.load(platformExt!("libcrash"))?;
       lib.call("triggerAbort").void()
     });
 
@@ -330,13 +330,13 @@ mod tests
   {
     let crashed: Result<(), FFIError> = ffi!(|scope| {
       scope.addSearchPath("examples/isolation");
-      let lib = scope.load(platformExt!("libcrash"))?;
+      let lib: Library = scope.load(platformExt!("libcrash"))?;
       lib.call("triggerAbort").void()
     });
     assert!(crashed.is_err(), "sanity check: the setup call should have crashed");
 
     let result: f64 = ffi!(|scope| {
-      let libm = scope.load(LibmPath)?;
+      let libm: Library = scope.load(LibmPath)?;
       libm.call("sqrt").arg::<f64>(16.0).result()
     })
     .expect("runtime should survive a crashed clone");
@@ -359,7 +359,7 @@ mod tests
     for i in 0..Iterations
     {
       let result: f64 = ffi!(|scope| {
-        let libm = scope.load(LibmPath)?;
+        let libm: Library = scope.load(LibmPath)?;
         libm.call("sqrt").arg::<f64>(4.0).result()
       })
       .unwrap_or_else(|e| {
@@ -393,7 +393,7 @@ mod tests
           for i in 0..PerThread
           {
             let result: f64 = ffi!(|scope| {
-              let libm = scope.load(LibmPath)?;
+              let libm: Library = scope.load(LibmPath)?;
               libm.call("sqrt").arg::<f64>(4.0).result()
             })
             .unwrap_or_else(|e| {
