@@ -1,8 +1,8 @@
 use crate::ffi;
 use std::ffi::CString;
-use crate::ffi::types::primitive::Pointer;
-use crate::ffi::types::Value;
-use crate::platform::{LibcPath, LibmPath, StrdupSymbolName};
+use crate::ffi::types::primitive::{Arg, Pointer, StructValue};
+use crate::ffi::types::{Type, Value};
+use crate::platform::{platformExt, LibcPath, LibmPath, StrdupSymbolName};
 // =================================================================================================
 
 /// Checks all signed integer types 
@@ -241,6 +241,85 @@ fn rawString() -> ()
   }).expect("FFI RawString call failed");
 
   assert_eq!(result, 12345);
+}
+
+// =================================================================================================
+
+/// By-value struct as argument and result (uses the byValueStruct example lib).
+#[test]
+fn byValueStructArgAndResult() -> ()
+{
+  let sum: i32 = ffi!(|scope| {
+    scope.addSearchPath("examples/byValueStruct");
+    let lib: Library = scope.load(platformExt!("libbyvalue"))?;
+    let point: StructValue = StructValue::new([Arg::from(10i32), Arg::from(32i32)]);
+    lib.call("point_sum").arg(point).result()
+  }).expect("by-value arg failed");
+  
+  assert_eq!(sum, 42);
+
+  let (x, y): (i32, i32) = ffi!(|scope| {
+    scope.addSearchPath("examples/byValueStruct");
+    let lib: Library = scope.load(platformExt!("libbyvalue"))?;
+    
+    let point: StructValue = StructValue::new([Arg::from(1i32), Arg::from(2i32)]);
+    let out: StructValue = lib
+      .call("point_translate")
+      .arg(point)
+      .arg(10i32)
+      .arg(20i32)
+      .resultStruct(&[Type::I32, Type::I32])?;
+    
+    Ok((out.get(0)?, out.get(1)?))
+  }).expect("by-value result failed");
+  
+  assert_eq!((x, y), (11, 22));
+}
+
+/// By-value struct larger than 16 bytes (memory/stack path on common ABIs).
+#[test]
+fn byValueLargeStruct() -> ()
+{
+  let sum: f64 = ffi!(|scope| {
+    scope.addSearchPath("examples/byValueStruct");
+    let lib: Library = scope.load(platformExt!("libbyvalue"))?;
+    
+    let big: StructValue = StructValue::new([
+      Arg::from(1.5f64),
+      Arg::from(2.5f64),
+      Arg::from(3.0f64),
+      Arg::from(7i32),
+    ]);
+    
+    lib.call("big_sum").arg(big).result()
+  }).expect("large by-value arg failed");
+  
+  assert!((sum - 14.0).abs() < 1e-9);
+}
+
+/// Nested by-value struct arg + result.
+#[test]
+fn byValueNestedStruct() -> ()
+{
+  let (ox, oy, sc): (i32, i32, f32) = ffi!(|scope| {
+    scope.addSearchPath("examples/byValueStruct");
+    let lib: Library = scope.load(platformExt!("libbyvalue"))?;
+    
+    let nested: StructValue = StructValue::new([
+      Arg::from(StructValue::new([Arg::from(5i32), Arg::from(6i32)])),
+      Arg::from(1.5f32),
+    ]);
+    let out: StructValue = lib
+      .call("nested_double")
+      .arg(nested)
+      .resultStruct(&[Type::structure([Type::I32, Type::I32]), Type::F32])?;
+    
+    let origin: StructValue = out.getStruct(0)?;
+    Ok((origin.get(0)?, origin.get(1)?, out.get(1)?))
+  }).expect("nested by-value failed");
+  
+  assert_eq!((ox, oy), (10, 12));
+  assert!((sc - 3.0).abs() < 1e-5);
 }
 
 // =================================================================================================
