@@ -1,9 +1,9 @@
 #include <stdint.h>
 
 #ifdef _WIN32
-  #define CHILLFFI_EXPORT __declspec(dllexport)
+  #define ChillffiExport __declspec(dllexport)
 #else
-  #define CHILLFFI_EXPORT
+  #define ChillffiExport
 #endif
 
 // Small struct: typically passed in registers on x86_64 SysV / aarch64.
@@ -26,12 +26,12 @@ struct Nested {
   float scale;
 };
 
-CHILLFFI_EXPORT int32_t pointSum(struct Point p)
+ChillffiExport int32_t pointSum(struct Point p)
 {
   return p.x + p.y;
 }
 
-CHILLFFI_EXPORT struct Point pointTranslate(struct Point p, int32_t dx, int32_t dy)
+ChillffiExport struct Point pointTranslate(struct Point p, int32_t dx, int32_t dy)
 {
   struct Point out;
   out.x = p.x + dx;
@@ -39,12 +39,12 @@ CHILLFFI_EXPORT struct Point pointTranslate(struct Point p, int32_t dx, int32_t 
   return out;
 }
 
-CHILLFFI_EXPORT double bigSum(struct Big b)
+ChillffiExport double bigSum(struct Big b)
 {
   return b.a + b.b + b.c + (double)b.tag;
 }
 
-CHILLFFI_EXPORT struct Big bigScale(struct Big b, double k)
+ChillffiExport struct Big bigScale(struct Big b, double k)
 {
   struct Big out;
   out.a = b.a * k;
@@ -54,12 +54,12 @@ CHILLFFI_EXPORT struct Big bigScale(struct Big b, double k)
   return out;
 }
 
-CHILLFFI_EXPORT float nestedScale(struct Nested n)
+ChillffiExport float nestedScale(struct Nested n)
 {
   return n.scale * (float)(n.origin.x + n.origin.y);
 }
 
-CHILLFFI_EXPORT struct Nested nestedDouble(struct Nested n)
+ChillffiExport struct Nested nestedDouble(struct Nested n)
 {
   struct Nested out;
   out.origin.x = n.origin.x * 2;

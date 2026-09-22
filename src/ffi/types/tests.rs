@@ -263,7 +263,7 @@ fn byValueStructArgAndResult() -> ()
       Arg::from(32i32),
     ]);
 
-    lib.call("point_sum").arg(point).result()
+    lib.call("pointSum").arg(point).result()
   }).expect("by-value arg failed");
 
   assert_eq!(sum, 42);
@@ -280,7 +280,7 @@ fn byValueStructArgAndResult() -> ()
     ]);
 
     let out: StructValue = lib
-      .call("point_translate")
+      .call("pointTranslate")
       .arg(point)
       .arg(10i32)
       .arg(20i32)
@@ -312,7 +312,7 @@ fn byValueLargeStruct() -> ()
       Arg::from(7i32),
     ]);
 
-    lib.call("big_sum").arg(big).result()
+    lib.call("bigSum").arg(big).result()
   }).expect("large by-value arg failed");
 
   assert!((sum - 14.0).abs() < 1e-9);
@@ -336,7 +336,7 @@ fn byValueNestedStruct() -> ()
     ]);
 
     let out: StructValue = lib
-      .call("nested_double")
+      .call("nestedDouble")
       .arg(nested)
       .resultStruct(&[
         Type::structure([Type::I32, Type::I32]),
