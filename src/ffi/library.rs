@@ -316,6 +316,12 @@ impl<'a, 'g> CallBuilder<'a, 'g>
   }
 
   /// Finalize: execute and return a struct by value with the given field layout.
+  ///
+  /// The shape is a runtime `&[Type]` list — the same one used by
+  /// [`Scope::readDynamicStruct`](crate::ffi::scope::Scope::readDynamicStruct).
+  /// Required because the return buffer is untyped until `readStructAt`
+  /// decodes it; unlike `.arg(StructValue)`, the result side cannot infer
+  /// field types from values that do not exist yet.
   #[inline]
   pub fn resultStruct(self, fields: &[Type]) -> Result<StructValue, FFIError>
   {
@@ -411,6 +417,9 @@ impl<'a, 'g> VariadicCallBuilder<'a, 'g>
   }
 
   /// Finalize: execute the variadic call and return a struct by value.
+  ///
+  /// Same contract as [`CallBuilder::resultStruct`] — the field layout must
+  /// be supplied explicitly so the return buffer can be decoded.
   #[inline]
   pub fn resultStruct(self, fields: &[Type]) -> Result<StructValue, FFIError>
   {

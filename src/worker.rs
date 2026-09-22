@@ -180,7 +180,13 @@ fn toCifTypes(value: &Value) -> Result<Vec<LibffiType>, FFIError>
 
 // =================================================================================================
 
-/// todo desc
+/// Derives a `LibffiType` from a runtime [`Value`].
+///
+/// Used when building CIF argument types for by-value structs whose shape
+/// is carried by the `Value` itself (each field knows its concrete variant).
+/// Nested `Value::Struct` fields are turned into nested `structure(...)` types
+/// recursively. `Value::String` is rejected — it expands to two CIF arguments
+/// and cannot appear as a single struct field.
 fn valueToLibffiType(value: &Value) -> Result<LibffiType, FFIError>
 {
   match value
@@ -216,7 +222,11 @@ fn valueToLibffiType(value: &Value) -> Result<LibffiType, FFIError>
   }
 }
 
-/// todo desc
+/// Derives a [`Type`] schema from a runtime [`Value`].
+///
+/// Needed by `writeStructAt` / `structLayout` when serializing a by-value
+/// struct argument into a contiguous buffer: the layout engine takes a
+/// `&[Type]`, not a `&[Value]`. Nested structs are mapped recursively.
 fn valueToType(value: &Value) -> Result<Type, FFIError>
 {
   match value
