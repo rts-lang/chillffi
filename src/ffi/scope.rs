@@ -91,10 +91,10 @@ pub(super) fn currentScopeReadErrno() -> Option<bool>
 
 // =================================================================================================
 
-/// A handle to the `ScopeGuard` of the current [`crate::ffi!`]-block — borrows it for 'g.
+/// A handle to the internal `ScopeGuard` of the current [`crate::ffi!`]-block — borrows it for 'g.
 ///
 /// That is precisely why [`AllocatedMemory<'g>`] and [`Library<'g>`] cannot leave
-/// the block: the `ScopeGuard`, which they borrow, is dropped at the boundary of the
+/// the block: the internal `ScopeGuard`, which they borrow, is dropped at the boundary of the
 /// block, and this is checked by the compiler.
 pub struct Scope<'g>
 {
@@ -438,7 +438,7 @@ impl<'g> Drop for Scope<'g>
 /// Created by [`FFIScope::enter`]. Holds:
 /// - a cloned zygote process and its IPC socket — any FFI operation sent
 ///   through this thread's stack lands in this clone,
-/// - a `ScopeGuard` that anchors the `'g` lifetime of [`Scope`],
+/// - an internal `ScopeGuard` that anchors the `'g` lifetime of [`Scope`],
 ///   [`AllocatedMemory<'g>`] and [`Library<'g>`].
 ///
 /// On drop: the zygote is killed, the guard is released, and any

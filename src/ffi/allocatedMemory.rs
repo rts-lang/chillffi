@@ -20,7 +20,7 @@ use std::marker::PhantomData;
 /// [`Scope::readMemory`](crate::ffi::scope::Scope::readMemory) and
 /// [`Scope::writeMemory`](crate::ffi::scope::Scope::writeMemory) directly.
 ///
-/// `'g` is the lifetime of the `ScopeGuard` block of [`crate::ffi!`] in which it was created.
+/// `'g` is the lifetime of the [`crate::ffi!`] block in which it was created.
 /// Until it is `'static` — the value physically cannot be returned from [`crate::ffi!`] outside.
 pub struct AllocatedMemory<'g>
 {

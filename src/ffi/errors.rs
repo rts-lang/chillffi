@@ -8,7 +8,7 @@ pub enum FFIError
 {
   // ===============================================================================================
   
-  /// The global zygote in `ZygoteState` was not initialized.
+  /// The global zygote was not initialized.
   ZygoteNotInitialized,
   
   /// The call is executed outside the context of the [`crate::ffi!`] macro.
