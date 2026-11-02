@@ -215,7 +215,6 @@ impl<'g> Drop for Library<'g>
 // =================================================================================================
 
 /// Builder for fluent FFI calls.
-#[doc(hidden)]
 pub struct CallBuilder<'a, 'g>
 {
   /// The library against which the call is issued.
@@ -234,7 +233,9 @@ pub struct CallBuilder<'a, 'g>
 
 impl<'a, 'g> CallBuilder<'a, 'g>
 {
+  /// Internal constructor: the public entry point is [`Library::call`].
   #[inline]
+  #[doc(hidden)]
   pub fn new(lib: &'a Library<'g>, name: &str) -> Self
   {
     Self {
@@ -358,17 +359,6 @@ impl<'a, 'g> CallBuilder<'a, 'g>
 // =================================================================================================
 
 /// Builder for fluent FFI calls to C-style variadic functions (`...`).
-///
-/// Produced exclusively by [`CallBuilder::variadic`] — the moment the
-/// fixed/variadic boundary is crossed, the chain changes type, so the two
-/// argument kinds can never be mixed up: `VariadicCallBuilder` has no
-/// `.variadic()` of its own and its `.arg()` appends variadic arguments
-/// only. Finalize with `.result()` / `.void()` exactly like [`CallBuilder`].
-///
-/// Note: C applies default argument promotions in the variadic part —
-/// `f32` promotes to `double`, `i8`/`i16` promote to `int`. Pass
-/// already-promoted types (`f64`, `i32`, ...) for variadic arguments.
-#[doc(hidden)]
 pub struct VariadicCallBuilder<'a, 'g>
 {
   /// The fixed-argument builder captured at `.variadic()` time.
