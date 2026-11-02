@@ -1,3 +1,4 @@
+use self::internal::ScopeGuard;
 use crate::errnoPolicy::globalReadErrno;
 use crate::ffi::allocatedMemory::AllocatedMemory;
 use crate::ffi::errors::FFIError;
@@ -9,14 +10,13 @@ use crate::ffi::types::{Type, Value};
 use crate::pathResolver::{resolveGlobal, PathResolver};
 use crate::zygote::{ClonedZygote, FFIRequest, ZygoteGuard};
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 // =================================================================================================
 
 /// Heavy stack or arena for temporary allocations within an [`crate::ffi!`] scope.
-struct HeavyStack
+pub(crate) struct HeavyStack
 {
   /// Local path resolver for the current scope.
   pathResolver: Option<PathResolver>,
@@ -28,25 +28,40 @@ struct HeavyStack
 
 // =================================================================================================
 
-/// Owner of HeavyStack. Created by the [`crate::ffi!`] macro once per block (only if
-/// the user requested Scope), lives and dies strictly with this block.
-///
-/// Is not published directly — access only through [`Scope<'g>.`].
-#[doc(hidden)]
-pub struct ScopeGuard
+/// Internal machinery of the scope — not part of the public API.
+pub(crate) mod internal
 {
-  /// Lazily initialized internal state of the scope.
-  inner: UnsafeCell< Option<HeavyStack> >
-}
+  use super::HeavyStack;
+  use std::cell::UnsafeCell;
 
-impl ScopeGuard
-{
+  /// Owner of [`HeavyStack`]. Created by the [`crate::ffi!`] macro once per block (only if
+  /// the user requested Scope), lives and dies strictly with this block.
+  ///
+  /// Is not published directly — access only through [`Scope<'g>`](super::Scope).
   #[doc(hidden)]
-  #[inline(always)]
-  pub const fn new() -> Self
+  pub struct ScopeGuard
   {
-    Self {
-      inner: UnsafeCell::new(None)
+    /// Lazily initialized internal state of the scope.
+    pub(crate) inner: UnsafeCell< Option<HeavyStack> >
+  }
+
+  impl ScopeGuard
+  {
+    #[doc(hidden)]
+    #[inline(always)]
+    pub const fn new() -> Self
+    {
+      Self {
+        inner: UnsafeCell::new(None)
+      }
+    }
+
+    /// Creates a [`Scope`](super::Scope) handle that borrows this guard.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn scope(&self) -> super::Scope<'_>
+    {
+      super::Scope::new(self)
     }
   }
 }
@@ -66,7 +81,7 @@ pub(super) fn currentScopeReadErrno() -> Option<bool>
 {
   ScopeStack.with(|stack| {
     let guardPtr: *const ScopeGuard = *stack.borrow().last()?;
-    // Safety: a pointer is only ever on ScopeStack while its `ScopeGuard` is
+    // Safety: a pointer is only ever on `ScopeStack` while its `ScopeGuard` is
     // alive — pushed in `Scope::new`, popped in `Scope::drop` before the guard
     // itself can go out of scope.
     let slot: &Option<HeavyStack> = unsafe{ &*(*guardPtr).inner.get() };
@@ -90,9 +105,10 @@ impl<'g> Scope<'g>
 {
   // ===============================================================================================
 
-  #[doc(hidden)]
+  /// Internal constructor: `Scope` is obtained via [`FFIScope::scope`]
+  /// or [`crate::ffi!`] macro.
   #[inline(always)]
-  pub fn new(guard: &'g ScopeGuard) -> Self
+  pub(crate) fn new(guard: &'g ScopeGuard) -> Self
   {
     ScopeStack.with(|s| s.borrow_mut().push(guard as *const ScopeGuard));
     Self { guard }

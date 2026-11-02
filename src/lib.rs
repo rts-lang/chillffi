@@ -225,6 +225,7 @@ fn zygoteEntrypoint() -> ()
 #[doc(hidden)]
 pub mod __ffiInternal 
 {
+  pub use crate::ffi::scope::internal::ScopeGuard;
   pub use crate::zygote::{ClonedZygote, ZygoteGuard};
 }
 
@@ -262,8 +263,8 @@ macro_rules! ffi
         $crate::__ffiInternal::ZygoteGuard::enter(zygote);
  
       // `ScopeGuard` lives strictly within the boundaries of this block; $scopeName borrows it.
-      let _scopeGuard: $crate::ffi::scope::ScopeGuard = $crate::ffi::scope::ScopeGuard::new();
-      let $scopeName = $crate::ffi::scope::Scope::new(&_scopeGuard);
+      let _scopeGuard: $crate::__ffiInternal::ScopeGuard = $crate::__ffiInternal::ScopeGuard::new();
+      let $scopeName = _scopeGuard.scope();
  
       // Executing the body
       $($body)*
