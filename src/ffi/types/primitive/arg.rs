@@ -8,6 +8,7 @@ use std::ffi::CString;
 #[derive(Debug, Clone)]
 pub struct Arg(pub(crate) Value);
 
+#[doc(hidden)]
 pub mod private
 {
   use super::Arg;

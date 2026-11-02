@@ -22,7 +22,6 @@ impl ErasedCallable
   /// native closure is just "some [`State`] plus a way to call it", exactly
   /// like any other [`State`] the macro could hand in, so there is no
   /// separate closure-specific path to maintain.
-  #[doc(hidden)]
   pub fn fromStateAndFn<State: Send + 'static, Output: FfiPrimitive + 'static>(
     state: State,
     typedFn: fn(&State, &DynamicList) -> Output
