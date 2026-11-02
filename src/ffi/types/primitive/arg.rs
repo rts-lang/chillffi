@@ -108,6 +108,30 @@ implSealedArg!(&[u8]);
 
 // =================================================================================================
 
+// A byte-string literal `b"..."` is `&[u8; N]`, and Rust does not coerce it
+// to `&[u8]` inside a generic call - so it is accepted as is, without
+// a manual `.to_vec()`.
+
+impl<const N: usize> private::Sealed for &[u8; N] {}
+
+impl<const N: usize> private::IntoFfiValue for &[u8; N]
+{
+  fn intoFfiValue(self) -> Arg
+  {
+    Arg(Value::from(self.as_slice()))
+  }
+}
+
+impl<const N: usize> From<&[u8; N]> for Arg
+{
+  fn from(v: &[u8; N]) -> Self
+  {
+    Self(Value::from(v.as_slice()))
+  }
+}
+
+// =================================================================================================
+
 impl private::Sealed for StructValue {}
 
 impl private::IntoFfiValue for StructValue
