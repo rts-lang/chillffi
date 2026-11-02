@@ -20,6 +20,7 @@ struct HeavyStack
 {
   /// Local path resolver for the current scope.
   pathResolver: Option<PathResolver>,
+  
   /// Scope-level override for errno capture — see [`Scope::setReadErrno`].
   /// `None` means "no scope override, fall through to the global default".
   readErrno: Option<bool>
@@ -110,11 +111,16 @@ impl<'g> Scope<'g>
 
   // ===============================================================================================
 
-  /// Overrides errno capture for every call made through this scope — see
-  /// `FFIRequest::Call`'s `readErrno` field for what capture actually means.
-  /// A per-call override (`.errno()`/`.noErrno()` on [`CallBuilder`](crate::ffi::library::CallBuilder))
-  /// still takes priority over this; this in turn takes priority over the
-  /// global default set via [`crate::errnoPolicy::setGlobalReadErrno`].
+  /// Overrides `errno` capture for every call made through this scope.
+  ///
+  /// When enabled, the errno left by the call is read inside the clone right
+  /// after it returns, and becomes available via [`Scope::lastErrno`] (plus
+  /// [`Scope::lastOsError`] on Windows). Calls that did not ask for capture —
+  /// and non-call operations — leave it as `None`.
+  ///
+  /// A per-call override (`.errno()`/`.noErrno()`) still takes priority over
+  /// this; this in turn takes priority over the global default set via
+  /// [`crate::errnoPolicy::setGlobalReadErrno`].
   pub fn setReadErrno(&self, enabled: bool) -> ()
   {
     let slot: &mut Option<HeavyStack> = unsafe{ &mut *self.guard.inner.get() };
@@ -243,7 +249,7 @@ impl<'g> Scope<'g>
     value.try_into()
   }
 
-  /// Writes data from `Value` into the clone's memory at `pointer`.
+  /// Writes data from [`FfiArg`] into the clone's memory at `pointer`.
   pub fn writeMemory(pointer: impl Into<usize>, value: impl FfiArg) -> Result<(), FFIError>
   {
     sendRawRequest(FFIRequest::WriteMemory {
@@ -256,7 +262,7 @@ impl<'g> Scope<'g>
   // ===============================================================================================
 
   /// Reads a dynamically typed C structure from the pointer 
-  /// and returns it as a `DynamicStruct`.
+  /// and returns it as a [`DynamicList`].
   pub fn readDynamicStruct(
     pointer: impl Into<usize>,
     fields: &[Type]
@@ -424,9 +430,9 @@ impl<'g> Drop for Scope<'g>
 /// automatically (their own `Drop` runs only while `'g` is still valid — by
 /// construction it has been, because we are now at the end of the borrow).
 ///
-/// todo Requires consideration; this should theoretically not be possible:
-///  If you need to keep an allocation past the scope, extract its raw address
-///  via [`AllocatedMemory::address`] before the scope ends.
+//  todo Requires consideration; this should theoretically not be possible:
+//   If you need to keep an allocation past the scope, extract its raw address
+//   via [`AllocatedMemory::address`] before the scope ends.
 ///
 /// This is the non-macro entry point. It exists for use cases where the
 /// boundaries of the FFI block are not known at compile time — a JIT, an

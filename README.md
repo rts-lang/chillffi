@@ -36,7 +36,7 @@ keeping your main Rust application running.
 | [Allocation handling](examples/memory/main.rs)             | ✅ Allocation of a memory region for FFI.                                            |
 | [Callbacks](examples/callback/main.rs)                     | ✅ Passing closures as C functions (`callback!`).                                    |
 | [Signals](examples/callPointer/main.rs)                    | ✅ Working with signals and calling pointers (`callvPointer`, `callPointer`).        |
-| [Errno Policy](examples/errno/main.rs)                     | ✅ Configuring errno reading at the call, scope, or global level.                    |
+| [Errno Policy](examples/errno/main.rs)                     | ✅ Configuring `errno` reading at the call, scope, or global level.                  |
 | [String data types](examples/strings/main.rs)              | ✅ String (`""`), CString (`c""`), RawString (`b""`).                                |
 | [Variadic arguments](examples/variadic/main.rs)            | ✅ Support for variable arguments in function calls.                                 |
 | Sandbox (FS protection)                                    | ⏳ [#45](https://github.com/rts-lang/chillffi/issues/45)                             |
@@ -116,9 +116,7 @@ fn main() -> ()
       .arg(mem.asPointer())
       .void()?;
 
-    let Value::RawString(bytes) = mem.read()? else { 
-      panic!("expected bytes")
-    };
+    let bytes: Vec<u8> = mem.read()?;
     drop(mem);
 
     let secs: i64 = i64::from_ne_bytes(bytes[0..8].try_into().unwrap());

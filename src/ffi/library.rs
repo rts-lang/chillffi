@@ -18,6 +18,7 @@ use std::sync::OnceLock;
 
 /// Counter for assigning unique identifiers to libraries.
 static NextLibraryID: AtomicUsize = AtomicUsize::new(1);
+
 /// Global registry of loaded libraries by their identifiers.
 static RegisteredLibraries: OnceLock<RwLock<FxHashMap<usize, String>>> = OnceLock::new();
 
@@ -159,19 +160,20 @@ fn callById(
 
 // =================================================================================================
 
-/// Handle of a loaded library, bound to the `Scope<'g>` it was loaded through —
+/// Handle of a loaded library, bound to the [`Scope<'g>`](crate::ffi::scope::Scope) it was loaded through —
 /// same model as [`AllocatedMemory<'g>`](crate::ffi::allocatedMemory::AllocatedMemory).
 ///
 /// `Library<'g>` cannot outlive the scope that created it: there is no way to
 /// construct one except via [`Scope::load`](crate::ffi::scope::Scope::load),
-/// which requires a live `Scope<'g>` in the first place. This replaces the old
-/// `__Library<const Allowed: bool>` gate — the lifetime *is* the gate now.
+/// which requires a live [`Scope<'g>`](crate::ffi::scope::Scope) in the first place.
 pub struct Library<'g>
 {
   /// Library identifier.
   libraryId: usize,
+  
   /// Path to the loaded library.
   libraryPath: String,
+  
   /// Phantom lifetime marker tying the handle to the scope it was loaded through.
   _scope: PhantomData<&'g ()>
 }
@@ -464,8 +466,8 @@ impl<'g> Library<'g>
   }
 
   /// Executes a function call from the loaded library.
-  ///
-  /// todo It should be completely hidden and not work directly
+  //
+  // todo It should be completely hidden and not work directly
   #[inline]
   #[doc(hidden)]
   pub(crate) fn __call<T: FfiPrimitive>(
