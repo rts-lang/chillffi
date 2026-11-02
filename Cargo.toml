@@ -103,7 +103,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 # Serialization and deserialization of request and response structures.
 
 serde_bytes = "0.11.19"
-# todo desc
+# Compact serialization of byte buffers (raw bytes and strings)
+# without UTF-8 conversion.
 
 ctor = "1.0.13"
 # Execution of functions at process startup for automatic initialization.
