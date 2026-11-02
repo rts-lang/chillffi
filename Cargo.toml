@@ -112,7 +112,7 @@ ctor = "1.0.13"
 fxhash = "0.2.1"
 # Fast HashMap without additional protection against hash attacks.
 
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 # Fast and compact synchronization primitives without lock poisoning.
 
 bytemuck = { version = "1.25.2", features = ["derive"] }
