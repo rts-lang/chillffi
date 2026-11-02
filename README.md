@@ -104,7 +104,7 @@ from the system library `libc.so.6` using `AllocatedMemory`:
 fn main() -> ()
 {
   // clock_gettime(CLOCK_REALTIME, &timespec) — struct out-param via Alloc/ReadMemory,
-  // the case a plain Value::Pointer can't cover on its own.
+  // the case a plain Pointer can't cover on its own.
   let (secs, nanos): (i64, i64) = ffi!(|scope| {
     let libc: Library = scope.load("libc.so.6")?;
 

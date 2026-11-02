@@ -48,7 +48,7 @@ impl ErasedCallable
 /// The only place where the two worlds meet.
 struct StateFnAdapter<State: Send + 'static, Output: Primitive + 'static>
 {
-  /// Captured closure state (reconstructed by bit-copy — see [`callback!`]).
+  /// Captured closure state (reconstructed by bit-copy — see [`crate::callback!`]).
   state: State,
 
   /// Typed function entry point.

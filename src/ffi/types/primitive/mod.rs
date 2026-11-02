@@ -77,6 +77,7 @@ pub mod private
 /// which keeps `Value` and `PrimitiveValue` out of the public API while
 /// still letting `T: FfiPrimitive` appear in `pub fn` signatures.
 pub trait FfiPrimitive: Primitive + private::Sealed + private::FromFfiValue {}
+#[doc(hidden)]
 impl<T: PrimitiveValue> FfiPrimitive for T {}
 
 // =================================================================================================

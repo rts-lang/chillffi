@@ -30,8 +30,8 @@ pub enum FFIError
   /// The requested `function`/`symbol` was not found in the loaded library.
   SymbolNotFound { functionName: String },
 
-  /// An invalid argument was passed (for example, a variadic call without fixed 
-  /// arguments, or a null pointer).    
+  /// An invalid argument was passed (for example, a variadic call without fixed
+  /// arguments, or a null pointer).
   BadArgument(String),
 
   // ===============================================================================================

@@ -15,7 +15,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 // =================================================================================================
 
-/// Heavy stack or arena for temporary allocations within an [`ffi!`] scope.
+/// Heavy stack or arena for temporary allocations within an [`crate::ffi!`] scope.
 struct HeavyStack
 {
   /// Local path resolver for the current scope.
@@ -28,7 +28,7 @@ struct HeavyStack
 
 // =================================================================================================
 
-/// Owner of HeavyStack. Created by the [`ffi!`] macro once per block (only if
+/// Owner of HeavyStack. Created by the [`crate::ffi!`] macro once per block (only if
 /// the user requested Scope), lives and dies strictly with this block.
 ///
 /// Is not published directly — access only through [`Scope<'g>.`].
@@ -52,7 +52,7 @@ impl ScopeGuard
 }
 
 thread_local!{
-  /// Thread-local stack tracking active ScopeGuard pointers for the current thread.
+  /// Thread-local stack tracking active `ScopeGuard` pointers for the current thread.
   static ScopeStack: RefCell<Vec<*const ScopeGuard>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -66,8 +66,8 @@ pub(super) fn currentScopeReadErrno() -> Option<bool>
 {
   ScopeStack.with(|stack| {
     let guardPtr: *const ScopeGuard = *stack.borrow().last()?;
-    // Safety: a pointer is only ever on ScopeStack while its ScopeGuard is
-    // alive — pushed in Scope::new, popped in Scope::drop before the guard
+    // Safety: a pointer is only ever on ScopeStack while its `ScopeGuard` is
+    // alive — pushed in `Scope::new`, popped in `Scope::drop` before the guard
     // itself can go out of scope.
     let slot: &Option<HeavyStack> = unsafe{ &*(*guardPtr).inner.get() };
     slot.as_ref()?.readErrno
@@ -76,10 +76,10 @@ pub(super) fn currentScopeReadErrno() -> Option<bool>
 
 // =================================================================================================
 
-/// A handle to the ScopeGuard of the current [`crate::ffi!`]-block — borrows it for 'g.
+/// A handle to the `ScopeGuard` of the current [`crate::ffi!`]-block — borrows it for 'g.
 ///
 /// That is precisely why [`AllocatedMemory<'g>`] and [`Library<'g>`] cannot leave
-/// the block: the ScopeGuard, which they borrow, is dropped at the boundary of the
+/// the block: the `ScopeGuard`, which they borrow, is dropped at the boundary of the
 /// block, and this is checked by the compiler.
 pub struct Scope<'g>
 {
@@ -422,7 +422,7 @@ impl<'g> Drop for Scope<'g>
 /// Created by [`FFIScope::enter`]. Holds:
 /// - a cloned zygote process and its IPC socket — any FFI operation sent
 ///   through this thread's stack lands in this clone,
-/// - a [`ScopeGuard`] that anchors the `'g` lifetime of [`Scope`],
+/// - a `ScopeGuard` that anchors the `'g` lifetime of [`Scope`],
 ///   [`AllocatedMemory<'g>`] and [`Library<'g>`].
 ///
 /// On drop: the zygote is killed, the guard is released, and any
@@ -442,6 +442,7 @@ pub struct FFIScope
   /// RAII handle that keeps the cloned zygote on the thread-local stack
   /// for as long as we are alive.
   _zygote: ZygoteGuard,
+  
   /// Backing storage for the `'g` lifetime borrowed by [`Scope`],
   /// [`AllocatedMemory<'g>`] and [`Library<'g>`].
   guard: ScopeGuard
