@@ -1,232 +1,237 @@
-### Введение
+### Introduction
 
-Здесь описано всё, что может быть необходимо для того, чтобы вы сделали 
-свой вклад в развитие фреймворка `chillffi`.
+This document describes everything you may need to contribute to 
+the development of the `chillffi` framework.
 
-Учитывайте так же:
-- Фреймворк сделан 1 человеком и может быть улучшен с вашей поддержкой;
-- Не является коммерческим и следует лицензии `FCL`;
-- Не является промышленным, а личной реализацией.
+Also keep in mind:
+- The framework was made by 1 person and can be improved with your support;
+- It is not commercial and follows the `FCL` license;
+- It is a personal project, not an industrial-grade implementation.
 
-### Линейная история
+---
 
-`chillffi` следует всегда линейной истории. Поэтому существует всего лишь 
-одна ветка в основном репозитории.
+### Linear History
 
-Предыдущие версии не поддерживаются т.к. в этом нет смысла.
-Смысл как раз в том, чтобы исправлять последнюю версию, получать новые 
-возможности и так далее. Но если вдруг вам нужен конкретный снимок старых 
-версий - вы можете это сделать отдельно, исправить что-то и так далее.
-Хотя я не знаю, зачем это может быть нужно.
+`chillffi` always follows a linear history. Therefore, there is only
+one branch in the main repository.
 
-Из этого также следует если вы имеете проблемы на старой версии - 
-они могут быть уже исправлены на новой.
+Previous versions are not supported because there is no point in doing so.
+The whole point is to fix the latest version, get new features, and so on.
+However, if you ever need a specific snapshot of older versions, you can
+do that separately, make some fixes, and so on. Although I don't know why 
+you would need that.
+
+It also follows that if you have problems with an older version, they may 
+have already been fixed in a newer one.
 
 ---
 
 ### PR
 
-Чтобы предложить изменение, необходимо открыть PR. Для этого вам
-потребуется клонировать основной репозиторий, делать изменения
-в своём `форке` и уже потом предлагать их в основную ветку через PR.
+To propose a change, you need to open a `PR`. To do this, you will need 
+to clone the main repository, make changes in your own `fork`, and then 
+propose them to the main branch through a `PR`.
 
-Для сохранения чистоты истории используется исключительно `squash merge`.
-Это удобно когда вы делаете изменения любого размера и они займут 
-всего лишь 1 коммит в истории `chillffi`, что также позволяет 
-поддерживать чистоту линейной истории.
+To keep the history clean, exclusively `squash merge` is used.
+This is convenient when making changes of any size, as they
+will take up only 1 commit in the `chillffi` history, which also
+helps maintain a clean linear history.
 
-Соблюдайте 1 тему на 1 PR. Смешанные изменения могут быть отклонены 
-или разделены и приняты не полностью. Хотя в исключительных случаях 
-возможно затронуть смежные вещи.
+Stick to 1 topic per `PR`. Mixed changes may be rejected or split and 
+only partially accepted. Although, in exceptional cases, it is possible 
+to touch related things.
 
-Кроме того, не открывайте PR, если вы не протестировали его у себя или 
-он просто ради теста - вы можете сделать первые шаги у себя в репозитории 
-и локально. Это также важно потому, что CI можно проверять локально 
-ещё до публикации вашего вклада.
+Additionally, do not open a `PR` if you have not tested it yourself or
+if it is simply for testing purposes — you can take the first steps
+in your own repository and locally. This is also important because `CI` 
+can be checked locally even before publishing your contribution.
 
 ---
 
 ### Issues
 
-Если у вас есть предложения, найденные баги или иные вопросы касаемо
-самого фреймворка - пишите в `issues`.
+If you have suggestions, found bugs, or other questions regarding
+the framework itself, open an `issue`.
 
-Соблюдайте 1 тему на 1 `issue`. Поэтому если у вас несколько разных тем, 
-то не поленитесь разделить их на несколько отдельных `issue`. Много не означает 
-плохо в данном случае. Несколько тем в 1 `issue` сложно рассматривать и в 
-последствии реализовывать.
+Follow the rule of 1 topic per 1 `issue`. Therefore, if you have several 
+different topics, do not be lazy to separate them into several individual 
+`issues`. Having multiple issues is perfectly fine. Several topics in 1 
+`issue` are difficult to review and subsequently implement.
 
 ---
 
 ### CI
 
-CI позволяет вам вручную проверять нужные коммиты при необходимости.
+`CI` allows you to manually run checks on specific commits when needed.
 
-Но в любом случае при открытии PR вашу сборку проверит автоматически 
-и будет проверять каждый раз при изменениях.
+However, your build will be checked automatically when you open 
+a PR and on every subsequent change.
 
-Это нужно чтобы:
-- Вы могли проверить свои изменения локально, когда она еще просто ветка 
-  репозитория без PR.
-- Изменения были приведены к единой проверке уже в PR.
+This is necessary so that:
+- You can check your changes locally before submitting them in a `PR`.
+- Changes are subject to a unified check once they are in a `PR`.
 
-CI проверяет:
-- Поддерживаемые платформы;
-- `clippy` - На предмет стиля и идиом, без учитывания ошибок;
-- `docs` - Что документация собирается без предупреждений;
-- `tests` - Что все базово работает;
-- `examples` - Что показательные примеры работают.
+`CI` checks:
+- Supported platforms;
+- `clippy` - For style and idioms, not for error detection;
+- `docs` - That the documentation builds without warnings;
+- `tests` - That everything basically works;
+- `examples` - That the demonstration examples work.
 
-Без этой проверки PR невозможно смержить.
-
----
-
-### Иные платформы
-
-Это частично описано в [readme](README.md).
-
-Если вам нужны иные платформы, которые не поддерживаются сейчас,
-то это отдельная задача:
-- Потребности;
-- Кто будет это реализовывать;
-- Как это реализовывать.
-
-При такой необходимости это требует отдельного рассмотрения и будет требовать 
-отдельного тестирования этих сборок.
-
-Поэтому это не гарантирует добавление его в основную ветку. Поскольку 
-определенные сборки невозможно тестировать в CI и это требует решения 
-вышеперечисленных пунктов.
+A `PR` cannot be merged without passing these checks.
 
 ---
 
-### Тесты
+### Other Platforms
 
-Тесты пишутся для проверки небольших механик.
+This is partially described in the [readme](README.md).
 
-Это мелкие `unit` тесты, другие тесты просто не нужны.
+If you need other platforms that are not currently supported,
+this is a separate task:
+- Requirements;
+- Who will implement it;
+- How to implement it.
 
-Это позволяет не сломать фреймворк и масштабировать его.
+If such a need arises, it will require separate consideration and 
+separate testing of these builds.
 
-Все они находятся в папке [src](./src).
-
-Вы можете проверить их через `cargo test`.
-
-Учитывайте это при необходимости добавить тесты.
+Therefore, this does not guarantee its addition to the main branch. Since
+certain builds cannot be tested in `CI`, this requires resolving
+the aforementioned points.
 
 ---
 
-### Примеры
+### Tests
 
-Примеры пишутся для обозначения `фич` фреймворка и как примеры использования.
+Tests are written to verify small mechanics.
 
-Они обозначаются в `readme` в разделе [features](README.md#-features).
+These are small `unit` tests; other tests are simply unnecessary.
 
-Их не много и всегда меньше текстов.
+This makes it possible to avoid breaking the framework and scale it.
 
-Все они находятся в папке [examples](./examples).
+They are all located in the [src](./src) directory.
 
-Для запуска `cargo run --example <name>`.
+You can run them using `cargo test`.
 
-Учитывайте это при необходимости добавить примеры.
+Keep this in mind when adding tests if necessary.
+
+---
+
+### Examples
+
+Examples are written to demonstrate the framework's `features` and to serve 
+as usage examples.
+
+They are listed in the `readme` in the [features](README.md#-features) section.
+
+There are not many of them, and they are always fewer than the texts.
+
+They are all located in the [examples](./examples) folder.
+
+To run: `cargo run --example <name>`.
+
+Keep this in mind when adding examples if necessary.
 
 ---
 
 ### build.rs
 
-Для некоторых `примеров` требуется сборка динамических библиотек.
+Some `examples` require building dynamic libraries.
 
-Для этого используется `build.rs`.
+For this, `build.rs` is used.
 
-Он компилирует каждый `.c` файл в папке [examples](./examples) в общую 
-библиотеку рядом с исходником:
-- `lib<имя>.so` на Linux;
-- `lib<имя>.dylib` на macOS;
-- `lib<имя>.dll` на Windows. 
+It compiles each `.c` file in the [examples](./examples) folder into a shared
+library next to the source file:
+- `lib<name>.so` on Linux;
+- `lib<name>.dylib` on macOS;
+- `lib<name>.dll` on Windows.
 
-Сборка происходит не при каждой команде `cargo`.
+The build does not happen on every `cargo` command.
 
-`Cargo` перезапускает `build.rs` только при изменении папки `examples` 
-или самого `build.rs`, а внутри пересобираются только те `.c`, у 
-которых исходник новее готовой библиотеки.
+`Cargo` reruns `build.rs` only when the `examples` folder
+or `build.rs` itself changes, and only those `.c` files whose
+source is newer than the compiled library are rebuilt.
 
-Поэтому нужен C-компилятор:
-- На Linux и других Unix - `cc` в `PATH` (или путь из `CC`);
-- На macOS - `clang` (`cc` указывает на него);
-- На Windows - MSVC toolchain, `cl.exe`.
+Therefore, a C compiler is required:
+- On Linux and other Unix systems - `cc` in `PATH` (or the path from `CC`);
+- On macOS - `clang` (`cc` points to it);
+- On Windows - MSVC toolchain, `cl.exe`.
 
-При сборке на `docs.rs` этот шаг пропускается - [build.rs](build.rs) 
-выходит рано, когда установлен `DOCS_RS`.
+When building on `docs.rs`, this step is skipped - [build.rs](build.rs)
+exits early when `DOCS_RS` is set.
 
-Пользователям фреймворка это не требуется - примеры не входят 
-в публикуемый пакет.
-
----
-
-### Флаги сборки
-
-На данный момент дополнительных флагов сборки нет.
-
-Есть только 1 флаг `docsrs`, и он не входит в `default`.
-
-Он нужен исключительно для сборки документации на `docs.rs`.
-
-Вручную его включать не нужно.
+Users of the framework do not need this - examples are not included
+in the published package.
 
 ---
 
-### Стиль кода
+### Build Flags
 
-Чтобы понять стиль кода, достаточно посмотреть пару файлов как они выглядят.
+There are currently no additional build flags.
 
-Несколько правил, которые следует соблюдать:
-- Использование `camelCase` там где это возможно;
-- Указывание типов там где это возможно и не является огромным типом;
-- Статические вещи или классовые/enum имена следует начинать как `CamelCase`.
+There is only 1 flag, `docsrs`, and it is not included in `default`.
 
-В [Cargo.toml](Cargo.toml) также есть правила, которые отключают проверки под 
-стиль кода проекта.
+It is needed exclusively for building documentation on `docs.rs`.
 
-А также CI не использует `rustfmt`, потому что это сломает текущий стиль проекта 
-и его пришлось бы сильно менять. Не запускайте его ни в каком виде - это сломает 
-стиль всего проекта.
+You do not need to enable it manually.
+
+---
+
+### Code Style
+
+To understand the code style, it is enough to look at a couple of files 
+to see what they look like.
+
+A few rules that should be followed:
+- Using `camelCase` wherever possible;
+- Specifying types wherever possible, as long as the type is not huge;
+- Starting static items or class/enum names with `CamelCase`.
+
+In [Cargo.toml](Cargo.toml), there are also rules that disable checks for
+the project's code style.
+
+Also, `CI` does not use `rustfmt` because this would break the project's 
+current style and it would have to be changed significantly. Do not run it 
+in any form - this will break the style of the entire project.
 
 > [!IMPORTANT]
 >
-> Если вы не будете использовать стиль проекта - то PR не может быть смержен 
-> или будет изменен под общий стиль при проверке.
+> If you do not follow the project's style, your `PR` cannot be merged
+> or will be modified to match the general style during review.
 >
-> Это затянет ручные проверки и исправление вашего стиля кода, потому что 
-> автоматической проверки нет.
+> This will prolong manual reviews and corrections to your code style because
+> there is no automated check.
 >
-> Поэтому учитывайте и уважайте это если хотите внести свой вклад в фреймворк - 
-> посмотрите в каком стиле написан код в целом, чтобы не выделяться.
+> Therefore, take this into account and respect it if you want to contribute 
+> to the framework - look at the overall style of the code so that your code 
+> does not stand out.
 
 ---
 
 ### Security
 
-По вопросам уязвимостей прочитайте [это](SECURITY.md).
+For vulnerability-related matters, read [this](SECURITY.md).
 
-Уязвимость отличается от ошибки - это то, чем можно воспользоваться против 
-пользователей фреймворка.
+A vulnerability differs from a bug - it is something that can be exploited 
+against users of the framework.
 
-Вам не следует открывать `issues` или `PR` по этому вопросу, поскольку это 
-будет открыто для всех, что может навредить остальным.
+You should not open `issue` or `PR` for this matter, because this would be
+publicly visible to everyone, which could harm others.
 
 > [!IMPORTANT]
 >
-> Хотя уязвимости бывают разные - соблюдайте эти правила даже при
-> простых уязвимостях.
+> Although vulnerabilities can vary - follow these rules even for
+> simple vulnerabilities.
 
 ---
 
-### Лицензия
+### License
 
-Фреймворк лицензируется под [FCL](LICENSE.md) (Free Contribution License).
-Учитывайте это при использовании или изменении фреймворка.
+The framework is licensed under [FCL](LICENSE.md) (Free Contribution License).
+Keep this in mind when using or modifying the framework.
 
-Открывая PR, вы подтверждаете, что ваш вклад создан вами, либо основан на работе 
-под совместимой лицензией, либо получен от того, кто это подтвердил, и что он может 
-быть опубликован и перераспределён под лицензией `FCL`. Подробнее - в разделе 
-[Contributing](LICENSE.md#contributing) лицензии.
+By opening a `PR`, you confirm that your contribution was created by you, 
+or is based on work under a compatible license, or was obtained from someone 
+who confirmed this, and that it may be published and redistributed under 
+the `FCL` license. For more details, see the [Contributing](LICENSE.md#contributing) 
+section of the license.
