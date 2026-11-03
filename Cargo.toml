@@ -29,7 +29,8 @@ include = [
   "src/**/*",
   "Cargo.toml",
   "README.md",
-  "LICENSE.md"
+  "LICENSE.md",
+  "CONTRIBUTING.md"
 ]
 
 documentation = "https://docs.rs/chillffi"
@@ -134,6 +135,11 @@ ipc-channel = { git = "https://github.com/miruji/ipc-channel.git", branch = "add
 docsrs = ["libffi/check_only"]
 
 [lints.rust]
+
+missing_docs = "allow"
+# We do not enforce `docs` because it would require descriptions at 
+# the top of every file and other unnecessary documentation.
+
 non_snake_case = "allow"
 non_upper_case_globals = "allow"
 non_camel_case_types = "allow"
