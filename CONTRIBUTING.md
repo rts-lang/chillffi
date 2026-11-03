@@ -1,4 +1,4 @@
-### Introduction
+### 📖 Introduction
 
 This document describes everything you may need to contribute to 
 the development of the `chillffi` framework.
@@ -10,7 +10,7 @@ Also keep in mind:
 
 ---
 
-### Linear History
+### 📜 Linear History
 
 `chillffi` always follows a linear history. Therefore, there is only
 one branch in the main repository.
@@ -26,7 +26,7 @@ have already been fixed in a newer one.
 
 ---
 
-### PR
+### 🔀 PR
 
 To propose a change, you need to open a `PR`. To do this, you will need 
 to clone the main repository, make changes in your own `fork`, and then 
@@ -48,7 +48,7 @@ can be checked locally even before publishing your contribution.
 
 ---
 
-### Issues
+### 🐛 Issues
 
 If you have suggestions, found bugs, or other questions regarding
 the framework itself, open an `issue`.
@@ -60,7 +60,7 @@ different topics, do not be lazy to separate them into several individual
 
 ---
 
-### CI
+### ⚙️ CI
 
 `CI` allows you to manually run checks on specific commits when needed.
 
@@ -82,7 +82,7 @@ A `PR` cannot be merged without passing these checks.
 
 ---
 
-### Other Platforms
+### 🌍 Other Platforms
 
 This is partially described in the [readme](README.md).
 
@@ -101,7 +101,7 @@ the aforementioned points.
 
 ---
 
-### Tests
+### 🧪 Tests
 
 Tests are written to verify small mechanics.
 
@@ -117,7 +117,7 @@ Keep this in mind when adding tests if necessary.
 
 ---
 
-### Examples
+### 🧩 Examples
 
 Examples are written to demonstrate the framework's `features` and to serve 
 as usage examples.
@@ -134,7 +134,7 @@ Keep this in mind when adding examples if necessary.
 
 ---
 
-### build.rs
+### 🔨 build.rs
 
 Some `examples` require building dynamic libraries.
 
@@ -165,7 +165,7 @@ in the published package.
 
 ---
 
-### Build Flags
+### 🚩 Build Flags
 
 There are currently no additional build flags.
 
@@ -177,7 +177,7 @@ You do not need to enable it manually.
 
 ---
 
-### Code Style
+### 🎨 Code Style
 
 To understand the code style, it is enough to look at a couple of files 
 to see what they look like.
@@ -208,7 +208,7 @@ in any form - this will break the style of the entire project.
 
 ---
 
-### Security
+### 🛡️ Security
 
 For vulnerability-related matters, read [this](SECURITY.md).
 
@@ -225,7 +225,7 @@ publicly visible to everyone, which could harm others.
 
 ---
 
-### License
+### 📄 License
 
 The framework is licensed under [FCL](LICENSE.md) (Free Contribution License).
 Keep this in mind when using or modifying the framework.
