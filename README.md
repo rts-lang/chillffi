@@ -203,6 +203,6 @@ But if very simply, for those who just work and want to use it:
 
 Keep this in mind for your projects.
 
-### 🧠 Contributing
+## 🧠 Contributing
 
 If you want to contribute to the development of the project, read [this](CONTRIBUTING.md).
